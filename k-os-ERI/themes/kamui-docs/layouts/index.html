@@ -1,0 +1,352 @@
+{{ define "main" }}
+  <div class="doc-meta">{{ .Site.Params.description }}</div>
+  
+  <!-- ヒーロー画像 -->
+  {{ if .Params.hero_image }}
+  <div class="hero" id="docHero">
+    <img src="{{ .Params.hero_image }}" alt="{{ .Params.hero_alt | default "Hero Image" }}">
+  </div>
+  {{ end }}
+  
+  <!-- コンテンツセクション -->
+  {{/* 統合データ: sections.yaml + data/saas/*.yaml */}}
+  {{ $all := slice }}
+  {{ range .Site.Data.sections }}
+    {{ $all = $all | append . }}
+  {{ end }}
+  {{ with .Site.Data.saas }}
+    {{ range $k, $arr := . }}
+      {{ range $arr }}
+        {{/* private_で始まるファイルの場合は、source_fileフィールドを追加 */}}
+        {{ $item := . }}
+        {{ if hasPrefix $k "private_" }}
+          {{ $item = $item | merge (dict "source_file" $k "is_private" true) }}
+        {{ else }}
+          {{ $item = $item | merge (dict "source_file" $k "is_private" false) }}
+        {{ end }}
+        {{ $all = $all | append $item }}
+      {{ end }}
+    {{ end }}
+  {{ end }}
+
+  {{ range $all }}
+  <section class="doc-section" id="{{ .id }}" data-cat="{{ .category }}" data-cat-name="{{ .category_name }}" data-is-private="{{ .is_private }}">
+    <h2>{{ if .is_private }}<span aria-label="プライベートファイル">🔒</span> {{ end }}{{ .title }}</h2>
+    {{ if hasPrefix .id "requirements-" }}
+      {{ $item := . }}
+      {{ $secId := .id }}
+      {{/* 初期はカードのみ表示し、クリックで要件定義書本体を表示 */}}
+      <style>
+        /* 2列レイアウト（要件定義書のカード専用） */
+        #requirementsDocCard-{{ $secId }} { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+        #requirementsDocCard-{{ $secId }} > * { min-width: 0; }
+        #requirementsDocCard-{{ $secId }} a.saas-app-card { min-width: 0; }
+        @media (max-width: 900px){ #requirementsDocCard-{{ $secId }} { grid-template-columns: 1fr; } }
+      </style>
+      <div id="requirementsDocCard-{{ $secId }}" class="dashboard-links" style="margin-top: 8px; display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+        <a href="#{{ $secId }}" class="saas-app-card" onclick="(function(){
+          var card = document.getElementById('requirementsDocCard-{{ $secId }}');
+          var body = document.getElementById('requirementsDocBody-{{ $secId }}');
+          if(card && body){ card.style.display='none'; body.style.display='block'; window.scrollTo(0,0); }
+        })(); return false;">
+          {{ with .image }}
+            <img src="{{ . }}" alt="{{ $item.title }}" style="width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px;">
+          {{ end }}
+          <div class="saas-app-title">
+            {{ .title }}
+            <span class="saas-app-arrow">→</span>
+          </div>
+          {{ with .content }}
+          <div class="saas-app-description">{{ . | markdownify }}</div>
+          {{ end }}
+          <div class="saas-app-features">
+            • 概要・ユーザー分析<br>
+            • 機能要件・非機能要件<br>
+            • アーキテクチャ・実装・運用
+          </div>
+        </a>
+
+        {{ if eq $secId "requirements-document" }}
+        <a href="#requirements-kamui-os" class="saas-app-card" onclick="(function(){
+          if (window.showRequirements) {
+            window.showRequirements('kamui-os');
+            setTimeout(function(){
+              var c = document.getElementById('requirementsDocCard-requirements-kamui-os');
+              var b = document.getElementById('requirementsDocBody-requirements-kamui-os');
+              if (c && b) { c.style.display='none'; b.style.display='block'; window.scrollTo(0,0); }
+            }, 0);
+          }
+        })(); return false;">
+          <img src="/images/requirements_doc_card.png" alt="KAMUI OS 要件定義書" style="width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px;">
+          <div class="saas-app-title">
+            KAMUI OS 要件定義書
+            <span class="saas-app-arrow">→</span>
+          </div>
+          <div class="saas-app-description">KAMUI OS 本体の要件定義書</div>
+          <div class="saas-app-features">
+            • プラットフォーム概要<br>
+            • コア機能・非機能要件<br>
+            • 技術スタック・運用
+          </div>
+        </a>
+
+        <a href="#requirements-kamui-os-npm" class="saas-app-card" onclick="(function(){
+          if (window.showRequirements) {
+            window.showRequirements('kamui-os-npm');
+            setTimeout(function(){
+              var c = document.getElementById('requirementsDocCard-requirements-kamui-os-npm');
+              var b = document.getElementById('requirementsDocBody-requirements-kamui-os-npm');
+              if (c && b) { c.style.display='none'; b.style.display='block'; window.scrollTo(0,0); }
+            }, 0);
+          }
+        })(); return false;">
+          <img src="/images/requirements_doc_card.png" alt="KAMUI OS NPM 要件定義書" style="width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px;">
+          <div class="saas-app-title">
+            KAMUI OS NPM 要件定義書
+            <span class="saas-app-arrow">→</span>
+          </div>
+          <div class="saas-app-description">KAMUI OS の npm パッケージ化に関する要件定義書</div>
+          <div class="saas-app-features">
+            • CLI/テンプレート同期<br>
+            • 型定義/プラグイン<br>
+            • 配布/互換性
+          </div>
+        </a>
+
+        <a href="#requirements-sns-marketing" class="saas-app-card" onclick="(function(){
+          if (window.showRequirements) {
+            window.showRequirements('sns-marketing');
+            setTimeout(function(){
+              var c = document.getElementById('requirementsDocCard-requirements-sns-marketing');
+              var b = document.getElementById('requirementsDocBody-requirements-sns-marketing');
+              if (c && b) { c.style.display='none'; b.style.display='block'; window.scrollTo(0,0); }
+            }, 0);
+          }
+        })(); return false;">
+          <img src="/images/sns_marketing_card.png" alt="SNSマーケティング ダッシュボード要件" style="width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px;">
+          <div class="saas-app-title">
+            SNSマーケティング ダッシュボード要件
+            <span class="saas-app-arrow">→</span>
+          </div>
+          <div class="saas-app-description">SNS運用のKPI/投稿カレンダー/レポート要件</div>
+          <div class="saas-app-features">
+            • KPIダッシュボード<br>
+            • 投稿カレンダー<br>
+            • 連携/API/CSV
+          </div>
+        </a>
+
+        <a href="#requirements-neko-cafe" class="saas-app-card" onclick="(function(){
+          if (window.showRequirements) {
+            window.showRequirements('neko-cafe');
+            setTimeout(function(){
+              var c = document.getElementById('requirementsDocCard-requirements-neko-cafe');
+              var b = document.getElementById('requirementsDocBody-requirements-neko-cafe');
+              if (c && b) { c.style.display='none'; b.style.display='block'; window.scrollTo(0,0); }
+            }, 0);
+          }
+        })(); return false;">
+          <img src="/images/requirements_doc_card.png" alt="ネコカフェ 要件定義書" style="width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px;">
+          <div class="saas-app-title">
+            ネコカフェ 要件定義書
+            <span class="saas-app-arrow">→</span>
+          </div>
+          <div class="saas-app-description">地域密着の猫カフェサービスの要件定義書</div>
+          <div class="saas-app-features">
+            • 予約/在籍猫プロフィール<br>
+            • グッズEC/通知/レポート<br>
+            • SNS連携/店舗運営
+          </div>
+        </a>
+        {{ end }}
+      </div>
+
+      <div id="requirementsDocBody-{{ $secId }}" style="display:none;">
+        {{ partial "requirements-document" . }}
+      </div>
+    {{ else if eq .id "employees-dashboard" }}
+      {{/* エージェントダッシュボード（カード一覧） */}}
+      <style>
+        #employeesDashboardCards { 
+          display: grid; 
+          grid-template-columns: repeat(3, minmax(0, 1fr)); 
+          gap: 20px; 
+        }
+        #employeesDashboardCards > * { min-width: 0; }
+        #employeesDashboardCards a.saas-app-card { 
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        #employeesDashboardCards .employee-video-container {
+          position: relative;
+          width: 100%;
+          padding-bottom: 100%; /* 1:1 アスペクト比 */
+          overflow: hidden;
+          border-radius: 8px;
+          margin-bottom: 12px;
+        }
+        #employeesDashboardCards .employee-video-container video,
+        #employeesDashboardCards .employee-video-container img {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        @media (max-width: 900px){ 
+          #employeesDashboardCards { grid-template-columns: 1fr; } 
+        }
+      </style>
+      <script>
+        // デバッグ用: エージェントダッシュボードの動画確認
+        document.addEventListener('DOMContentLoaded', function() {
+          setTimeout(function() {
+            const containers = document.querySelectorAll('#employeesDashboardCards .employee-video-container');
+            console.log('エージェント動画コンテナ数:', containers.length);
+            containers.forEach(function(container) {
+              const video = container.querySelector('video');
+              const dataVideo = container.getAttribute('data-video');
+              const dataId = container.getAttribute('data-id');
+              console.log('ID:', dataId, 'Video Path:', dataVideo, 'Video Element:', video);
+              if (video) {
+                console.log('Video src:', video.src, 'ReadyState:', video.readyState);
+              }
+            });
+          }, 1000);
+        });
+      </script>
+      <div id="employeesDashboardCards" class="dashboard-links" style="margin-top: 8px; display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;">
+        {{ range where $all "category" 10 }}
+          {{ if ne .id "employees-dashboard" }}
+            {{ $emp := . }}
+            <a href="#{{ $emp.id }}" class="saas-app-card" onclick="(function(){
+              var target=document.getElementById('{{ $emp.id }}');
+              if(target){ document.querySelectorAll('.doc-section').forEach(function(s){s.style.display='none'}); target.style.display='block'; window.scrollTo(0,0); }
+            })(); return false;">
+              <div class="employee-video-container" data-video="{{ $emp.video }}" data-id="{{ $emp.id }}">
+                {{ if $emp.video }}              
+                  <video src="{{ $emp.video }}" alt="{{ $emp.title }}" autoplay loop muted playsinline controls></video>
+                {{ else if $emp.image }}
+                  <img src="{{ $emp.image }}" alt="{{ $emp.title }}" />
+                {{ else }}
+                  <video src="/videos/agent_card.mp4" alt="{{ $emp.title }}" autoplay loop muted playsinline controls></video>
+                {{ end }}
+              </div>
+              <div class="saas-app-title">{{ $emp.title }}<span class="saas-app-arrow">→</span></div>
+              {{ with $emp.description }}<div class="saas-app-description">{{ . }}</div>{{ end }}
+            </a>
+          {{ end }}
+        {{ end }}
+      </div>
+    {{ else if hasPrefix .id "employees_" }}
+      {{/* エージェント詳細用の専用パーシャル */}}
+      {{ partial "employee-detail" . }}
+    {{ else }}
+      {{ if .content }}
+        {{ .content | markdownify }}
+      {{ end }}
+      
+      {{ if .markdown_file }}
+        <div class="markdown-body" data-path="{{ .markdown_file }}">
+          {{ readFile .markdown_file | markdownify }}
+        </div>
+      {{ end }}
+      {{ if .markdown_files }}
+        {{ range .markdown_files }}
+          <div class="markdown-body" data-path="{{ . }}">
+            {{ readFile . | markdownify }}
+          </div>
+        {{ end }}
+      {{ end }}
+      
+      {{ if .yaml_files }}
+        {{ range .yaml_files }}
+          {{ $yamlData := index (index $.Site.Data.saas (replace (path.Base .) ".yaml" "")) 0 }}
+          {{ if $yamlData }}
+            <div class="markdown-body" data-path="{{ . }}">
+              {{ $yamlData.content | markdownify }}
+            </div>
+          {{ end }}
+        {{ end }}
+      {{ end }}
+      
+      {{ if .image }}
+      <div class="section-image">
+        <img src="{{ .image }}" alt="{{ .title }}">
+      </div>
+      {{ end }}
+      
+      {{ if .table }}
+        {{ partial "table" .table }}
+      {{ end }}
+      
+      {{ if .dynamic_table }}
+        {{ partial "dynamic-table" . }}
+      {{ end }}
+      
+      {{ if .flow_diagram }}
+        {{ partial "flow-diagram" . }}
+      {{ end }}
+      
+      {{ if .mcp_section }}
+        {{ partial "mcp-section" . }}
+      {{ end }}
+      
+      {{ if .dynamic_cards }}
+        {{ partial "dynamic-cards" . }}
+      {{ end }}
+      
+      {{ if .images }}
+        {{ partial "image-grid" .images }}
+      {{ end }}
+      
+      {{ if .mermaid }}
+        {{ partial "mermaid" .mermaid }}
+      {{ end }}
+      
+      {{ if .additional_content }}
+        {{ .additional_content | markdownify }}
+      {{ end }}
+      
+      {{/* ダッシュボード内のエージェントカード群は削除 */}}
+      
+      {{ if .custom_html }}
+        {{ .custom_html | safeHTML }}
+      {{ end }}
+      
+      {{ if .gantt }}
+        {{ partial "gantt" . }}
+      {{ end }}
+      
+      {{ if .additional_mermaid }}
+        {{ range .additional_mermaid }}
+          {{ partial "mermaid-with-caption" . }}
+        {{ end }}
+      {{ end }}
+      
+      {{ if .code }}
+        {{ partial "code" .code }}
+      {{ end }}
+      
+      {{ if .cards }}
+        {{ partial "cards" .cards }}
+      {{ end }}
+      
+      {{ if .design_specs }}
+        {{ partial "design-specs" .design_specs }}
+      {{ end }}
+      
+      {{ if .additional_content }}
+        {{ .additional_content | markdownify }}
+      {{ end }}
+      
+      {{ if .client_samples }}
+        {{ partial "client-samples" .client_samples }}
+      {{ end }}
+    {{ end }}
+  </section>
+  {{ end }}
+{{ end }}

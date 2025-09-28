@@ -1,0 +1,5 @@
+{{ $lang := "" }}
+{{ $code := . }}
+{{ with .language }}{{ $lang = . }}{{ end }}
+{{ with .content }}{{ $code = . }}{{ end }}
+<pre class="code"{{ if $lang }} data-lang="{{ $lang }}"{{ end }}><code>{{ $code }}</code></pre>

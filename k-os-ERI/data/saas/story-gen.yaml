@@ -1,0 +1,1655 @@
+# ストーリージェネレーター アプリケーション（Story Gen）
+
+- id: saas-story-gen
+  category: 3
+  category_name: メディアエディタ
+  title: 3-5 Story Gen
+  content: ""
+  custom_html: |
+    <div style="margin-bottom: 20px;">
+      <button onclick="window.location.hash=''; location.reload();" style="padding: 8px 16px; background: #4a4a4a; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 14px;">
+        ← SaaS一覧に戻る
+      </button>
+    </div>
+
+    <div class="story-gen" id="storyGenApp" data-view="spread">
+      <header class="story-gen__header">
+        <div>
+          <div class="story-gen__title">🎞️ Story Gen</div>
+          <div class="story-gen__meta">
+            <span id="storyGenProject">プロジェクト: サンプル</span>
+            <span id="storyGenDate"></span>
+            <span id="storyGenCut">カット: 1</span>
+          </div>
+        </div>
+        <div class="story-gen__toggles" role="group" aria-label="表示切り替え">
+          <button class="story-gen__toggle" data-view-mode="vertical">上から下</button>
+          <button class="story-gen__toggle story-gen__toggle--active" data-view-mode="spread">見開き</button>
+        </div>
+      </header>
+
+      <section class="story-gen__controls">
+        <div class="story-gen__control-group">
+          <button class="story-gen__button" id="storyGenAddScene">シーンを追加</button>
+          <button class="story-gen__button" id="openMediaGalleryForInput">入力用にメディアを選択...</button>
+          <button class="story-gen__button story-gen__button--subtle" id="storyGenReset">初期シーンに戻す</button>
+        </div>
+        <div class="story-gen__control-group" style="border-top: 1px solid #e2e8f0; padding-top: 12px; margin-top: 12px; gap: 8px;">
+          <input type="text" id="storyGenSaveIdInput" placeholder="Save ID (e.g., my-story-01)" style="padding: 10px; border-radius: 12px; border: 1px solid #cbd5e1; flex-grow: 1; font-size: 13px;">
+          <button class="story-gen__button" id="storyGenSaveBtn" style="background-color: #2563eb;">Save</button>
+          <button class="story-gen__button story-gen__button--subtle" id="storyGenLoadBtn">Load</button>
+        </div>
+        <p class="story-gen__hint">シーンを追加・削除できます。各シーンのメディアはダイナミックメディアギャラリーから差し替え可能です。</p>
+      </section>
+
+      <!-- Generation Controls -->
+      <section class="story-gen__generation-controls">
+        <div id="storyGenInputTargetBar" class="story-gen__input-tray-bar">
+          <div class="story-gen__input-tray-header">
+            <strong style="color:#334155;">Input Targets (メディアギャラリーから画像を追加)</strong>
+            <div style="margin-left:auto; display:flex; gap:6px;">
+              <button class="story-gen__button story-gen__button--subtle story-gen__button--small" id="storyGenClearInputTray" title="入力トレイを空にする">クリア</button>
+            </div>
+          </div>
+          <div id="storyGenInputTray" class="story-gen__input-tray"></div>
+          <div id="storyGenInputTrayInfo" class="story-gen__input-tray-info">対象: 0件</div>
+        </div>
+
+        <div class="story-gen__generation-actions">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <label for="videoModelSelect" style="font-size: 13px; font-weight: 600; color: #334155;">Animation Model:</label>
+            <select id="videoModelSelect" class="story-gen__result-scene-select" style="max-width: 200px;">
+              <option value="veo3" selected>VEO3 (Default)</option>
+              <option value="hailuo-02">Hailuo-02</option>
+            </select>
+          </div>
+          <textarea class="story-gen__shared-textarea" id="storyGenPromptInput" placeholder="編集・生成したい内容（例: 色味を暖色に、肌をなめらかに、背景を夕景に など）"></textarea>
+          <div style="display: flex; gap: 12px;">
+            <button class="story-gen__generate-btn" id="storyGenNanoBtn" style="background: linear-gradient(45deg, #a855f7, #00d4aa); flex: 1;">
+              <span id="storyGenNanoBtnText">Nano Banana Edit</span>
+            </button>
+            <button class="story-gen__generate-btn" id="storyGenSeedBtn" style="background: linear-gradient(45deg, #4a9eff, #00d4aa); flex: 1;">
+              <span id="storyGenSeedBtnText">Seedream Edit</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Debug Log Section -->
+      <details id="storyGenDebugBox" style="margin-top:16px; margin-bottom: 24px; padding: 18px; background: #f8fafc; border-radius: 16px; border: 1px solid rgba(148, 163, 184, 0.25);">
+        <summary style="cursor:pointer;color:#475569;font-size:12px;font-weight:600;">デバッグログ</summary>
+        <div style="display:flex;gap:6px;margin:8px 0;align-items:center;">
+          <button id="storyGenLogCopy" class="story-gen__button story-gen__button--subtle story-gen__button--small">コピー</button>
+          <button id="storyGenLogClear" class="story-gen__button story-gen__button--subtle story-gen__button--small">クリア</button>
+          <label style="font-size:12px;color:#475569;display:flex;gap:6px;align-items:center;margin-left:auto;">
+            <input type="checkbox" id="storyGenLogAutoscroll" checked>
+            オートスクロール
+          </label>
+        </div>
+        <pre id="storyGenDebugLog" style="background:#fff;border:1px solid #e2e8f0;color:#334155;padding:10px;border-radius:8px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:11px;"></pre>
+      </details>
+
+      <section class="story-gen__generation-results">
+        <h4>生成結果</h4>
+        <div class="story-gen__result-grid" id="storyGenResultGrid">
+          <!-- Generated images will appear here -->
+        </div>
+      </section>
+
+      <div class="story-gen__views">
+        <div class="story-gen__view story-gen__view--spread" id="storyGenSpread"></div>
+        <div class="story-gen__view story-gen__view--vertical" id="storyGenVertical" hidden></div>
+      </div>
+    </div>
+
+    <div class="story-gen__modal" id="storyGenMediaModal" hidden aria-hidden="true">
+      <div class="story-gen__modal-backdrop" data-action="close-modal"></div>
+      <div class="story-gen__modal-dialog" role="dialog" aria-modal="true" aria-label="ダイナミックメディアギャラリー">
+        <div class="story-gen__modal-header">
+          <h3>ダイナミックメディアギャラリー</h3>
+          <button type="button" class="story-gen__modal-close" data-action="close-modal">閉じる</button>
+        </div>
+        <iframe src="/data/media-gallery/index.html?select=1" title="Dynamic Media Gallery" loading="lazy" referrerpolicy="no-referrer"></iframe>
+      </div>
+    </div>
+
+    <div class="story-gen__modal" id="storyGenLoadModal" hidden aria-hidden="true">
+      <div class="story-gen__modal-backdrop" data-action="close-load-modal"></div>
+      <div class="story-gen__modal-dialog" role="dialog" aria-modal="true" aria-label="Load Story" style="background: #f1f5f9; color: #1e293b; height: min(60vh, 480px); width: min(560px, 100%);">
+        <div class="story-gen__modal-header" style="background: #e2e8f0;">
+          <h3 style="color: #1e293b;">Load Story</h3>
+          <button type="button" class="story-gen__modal-close" data-action="close-load-modal" style="color: #1e293b; border-color: #94a3b8;">Close</button>
+        </div>
+        <div id="storyGenLoadList" style="padding: 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+          <!-- Saved stories will be listed here -->
+        </div>
+      </div>
+    </div>
+
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      .story-gen {
+        background: #fdfcf8;
+        border-radius: 18px;
+        box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
+        padding: 24px;
+        font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #1e293b;
+        overflow: hidden;
+      }
+
+      .story-gen__header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+
+      .story-gen__title {
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .story-gen__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        font-size: 12px;
+        color: #475569;
+      }
+
+      .story-gen__toggles {
+        display: inline-flex;
+        background: #e2e8f0;
+        border-radius: 10px;
+        padding: 4px;
+        gap: 4px;
+      }
+
+      .story-gen__toggle {
+        border: 1px solid transparent;
+        background: transparent;
+        color: #334155;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .story-gen__toggle:hover {
+        background: rgba(148, 163, 184, 0.25);
+      }
+
+      .story-gen__toggle--active {
+        background: #2563eb;
+        border-color: #1d4ed8;
+        color: #fff;
+        box-shadow: 0 8px 16px rgba(37, 99, 235, 0.25);
+      }
+
+      .story-gen__controls {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      .story-gen__control-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .story-gen__button {
+        background: #1e293b;
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 10px 20px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+
+      .story-gen__button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 24px rgba(30, 41, 59, 0.2);
+      }
+
+      .story-gen__button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+
+      .story-gen__button--subtle {
+        background: #e2e8f0;
+        color: #1e293b;
+      }
+
+      .story-gen__hint {
+        margin: 0;
+        font-size: 12px;
+        color: #475569;
+      }
+
+      .story-gen__views {
+        position: relative;
+      }
+
+      .story-gen__view {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.9));
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+      }
+
+      .story-gen__view[hidden] {
+        display: none !important;
+      }
+
+      /* Spread view */
+      .story-gen__spread-pages {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 24px;
+      }
+
+      .story-gen__spread-page {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+      }
+
+      .story-gen__spread-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 18px;
+        background: linear-gradient(90deg, rgba(59, 130, 246, 0.12), rgba(59, 130, 246, 0));
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .story-gen__spread-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+
+      .story-gen__spread-table th,
+      .story-gen__spread-table td {
+        border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+        border-right: 1px solid rgba(148, 163, 184, 0.1);
+        padding: 10px;
+        vertical-align: top;
+      }
+
+      .story-gen__spread-table th:last-child,
+      .story-gen__spread-table td:last-child {
+        border-right: none;
+      }
+
+      .story-gen__spread-table th {
+        background: rgba(226, 232, 240, 0.5);
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      .story-gen__spread-media {
+        width: 100%;
+        height: auto;
+        border-radius: 10px;
+        background: #f8fafc;
+        box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+      }
+
+      .story-gen__spread-media--video {
+        aspect-ratio: 16 / 9;
+        display: block;
+      }
+
+      .story-gen__spread-media--placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: 12px;
+        font-weight: 600;
+        min-height: 120px;
+      }
+
+      .story-gen__text {
+        white-space: pre-line;
+        line-height: 1.6;
+      }
+
+      /* Vertical view */
+      .story-gen__scene-list {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+
+      .story-gen__scene-card {
+        background: #fff;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+        overflow: hidden;
+        cursor: pointer;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      .story-gen__scene-card:hover {
+        border-color: rgba(37, 99, 235, 0.4);
+      }
+      .story-gen__scene-card--selected {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3), 0 12px 32px rgba(15, 23, 42, 0.12);
+      }
+
+      .story-gen__spread-scene-wrapper {
+        cursor: pointer;
+      }
+
+      .story-gen__scene-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 18px;
+        background: linear-gradient(90deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0));
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      .story-gen__scene-body {
+        padding: 18px;
+        display: grid;
+        grid-template-columns: minmax(260px, 1fr) minmax(320px, 1fr);
+        grid-template-areas:
+          'media prompt'
+          'media script'
+          'media time';
+        gap: 18px;
+      }
+
+      .story-gen__scene-media {
+        grid-area: media;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .story-gen__media-preview {
+        position: relative;
+        background: #f1f5f9;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        min-height: 160px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .story-gen__media-preview img,
+      .story-gen__media-preview video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .story-gen__media-placeholder {
+        text-align: center;
+        color: #94a3b8;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .story-gen__media-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .story-gen__media-actions input,
+      .story-gen__media-actions select {
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.6);
+        font-size: 12px;
+        color: #1e293b;
+        background: #f8fafc;
+      }
+
+      .story-gen__media-actions button {
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        background: #2563eb;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s ease;
+      }
+
+      .story-gen__media-actions button:hover {
+        background: #1d4ed8;
+      }
+
+      .story-gen__field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 12px;
+      }
+
+      .story-gen__field label {
+        font-weight: 600;
+        color: #334155;
+      }
+
+      .story-gen__field input {
+        width: 100%;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.6);
+        padding: 10px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #1f2937;
+        background: #fff;
+        resize: vertical;
+      }
+
+      .story-gen__field input:focus,
+      .story-gen__media-actions input:focus,
+      .story-gen__media-actions select:focus {
+        outline: 2px solid rgba(37, 99, 235, 0.25);
+        border-color: #2563eb;
+      }
+
+      .story-gen__field--prompt {
+        grid-area: prompt;
+      }
+
+      .story-gen__field--script {
+        grid-area: script;
+      }
+
+      .story-gen__field--time {
+        grid-area: time;
+        max-width: 160px;
+      }
+
+      .story-gen__scene-actions {
+        display: flex;
+        justify-content: flex-end;
+        padding: 0 18px 18px;
+      }
+
+      .story-gen__remove {
+        background: transparent;
+        color: #dc2626;
+        border: 1px solid rgba(220, 38, 38, 0.4);
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s ease;
+      }
+
+      .story-gen__remove:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .story-gen__remove:not(:disabled):hover {
+        background: rgba(220, 38, 38, 0.1);
+      }
+
+      /* Modal */
+      .story-gen__modal {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        z-index: 9999;
+      }
+
+      .story-gen__modal[hidden] {
+        display: none !important;
+      }
+
+      .story-gen__modal-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+      }
+
+      .story-gen__modal-dialog {
+        position: relative;
+        width: min(960px, 100%);
+        height: min(80vh, 720px);
+        background: #0f172a;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 30px 80px rgba(15, 23, 42, 0.45);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .story-gen__modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        background: rgba(15, 23, 42, 0.85);
+        color: #e2e8f0;
+      }
+
+      .story-gen__modal-header h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .story-gen__modal-close {
+        background: rgba(226, 232, 240, 0.08);
+        border: 1px solid rgba(226, 232, 240, 0.3);
+        border-radius: 8px;
+        color: #e2e8f0;
+        font-size: 12px;
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+
+      .story-gen__modal iframe {
+        flex: 1;
+        border: none;
+        width: 100%;
+        background: #0f172a;
+      }
+
+      @media (max-width: 1024px) {
+        .story-gen {
+          padding: 20px;
+        }
+
+        .story-gen__view {
+          padding: 18px;
+        }
+      }
+
+      @media (max-width: 900px) {
+        .story-gen__scene-body {
+          grid-template-columns: 1fr;
+          grid-template-areas:
+            'media'
+            'prompt'
+            'script'
+            'time';
+        }
+
+        .story-gen__field--time {
+          max-width: 240px;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .story-gen {
+          padding: 16px;
+        }
+
+        .story-gen__header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .story-gen__toggles {
+          align-self: stretch;
+        }
+
+        .story-gen__toggle {
+          flex: 1;
+          display: flex;
+          justify-content: center;
+        }
+
+        .story-gen__control-group {
+          flex-direction: column;
+        }
+
+        .story-gen__button {
+          width: 100%;
+          text-align: center;
+        }
+
+        .story-gen__spread-pages {
+          grid-template-columns: 1fr;
+        }
+      }
+    /* Generation Controls Styles */
+    .story-gen__generation-controls {
+      margin-bottom: 24px;
+      padding: 18px;
+      background: #f8fafc;
+      border-radius: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    .story-gen__input-tray-bar {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+    }
+    .story-gen__input-tray-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .story-gen__button--small {
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 8px;
+    }
+    .story-gen__input-tray {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-height: 56px;
+    }
+    .story-gen__input-tray-info {
+      color: #64748b;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    .story-gen__input-tray-item {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .story-gen__input-tray-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .story-gen__input-tray-item button {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background: rgba(15, 23, 42, 0.6);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      padding: 0;
+      font-size: 12px;
+      line-height: 20px;
+      text-align: center;
+    }
+    .story-gen__generation-actions {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .story-gen__shared-textarea {
+      width: 100%;
+      min-height: 80px;
+      resize: vertical;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      font-size: 13px;
+      line-height: 1.5;
+      color: #1f2937;
+      background: #fff;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .story-gen__shared-textarea:focus {
+      outline: 2px solid rgba(37, 99, 235, 0.25);
+      border-color: #2563eb;
+    }
+    .story-gen__generate-btn {
+      padding: 12px 20px;
+      background: linear-gradient(45deg, #2563eb, #0ea5e9);
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+    .story-gen__generate-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+    .story-gen__generate-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #ffffff33;
+      border-top: 2px solid #ffffff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .story-gen__generation-results {
+      margin-bottom: 24px;
+    }
+    .story-gen__generation-results h4 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .story-gen__result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .story-gen__result-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform 0.2s;
+      background: #f1f5f9;
+    }
+    .story-gen__result-item:hover {
+      transform: scale(1.03);
+    }
+    .story-gen__result-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .story-gen__result-actions {
+      position: absolute;
+      bottom: 6px;
+      right: 6px;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .story-gen__result-action-btn {
+      width: auto;
+      height: 32px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .story-gen__result-scene-select {
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background-color: #fff;
+      font-size: 12px;
+      max-width: 100px;
+      height: 32px;
+    }
+    </style>
+
+    <script src="/js/mcp-client.js?v=0.1.0"></script>
+    <script src="/js/gallery-manager.js?v=0.1.0"></script>
+    <script>
+      (function () {
+        const app = document.getElementById('storyGenApp');
+        if (!app) return;
+
+        // DOM Elements
+        const spreadView = document.getElementById('storyGenSpread');
+        const verticalView = document.getElementById('storyGenVertical');
+        const addSceneBtn = document.getElementById('storyGenAddScene');
+        const resetBtn = document.getElementById('storyGenReset');
+        const modal = document.getElementById('storyGenMediaModal');
+        const openMediaGalleryForInputBtn = document.getElementById('openMediaGalleryForInput');
+        const inputTray = document.getElementById('storyGenInputTray');
+        const inputTrayInfo = document.getElementById('storyGenInputTrayInfo');
+        const clearInputTrayBtn = document.getElementById('storyGenClearInputTray');
+        const promptInput = document.getElementById('storyGenPromptInput');
+        const resultGrid = document.getElementById('storyGenResultGrid');
+        const nanoBtn = document.getElementById('storyGenNanoBtn');
+        const seedBtn = document.getElementById('storyGenSeedBtn');
+        const nanoBtnText = document.getElementById('storyGenNanoBtnText');
+        const seedBtnText = document.getElementById('storyGenSeedBtnText');
+        const debugBox = document.getElementById('storyGenDebugBox');
+        const debugLogEl = document.getElementById('storyGenDebugLog');
+        const logCopyBtn = document.getElementById('storyGenLogCopy');
+        const logClearBtn = document.getElementById('storyGenLogClear');
+        const logAutoscroll = document.getElementById('storyGenLogAutoscroll');
+        const cutMeta = document.getElementById('storyGenCut');
+        const dateMeta = document.getElementById('storyGenDate');
+
+        // State
+        let mcpConfigManager;
+        const state = {
+          scenes: [createScene()],
+          selectedSceneId: null,
+          mediaTarget: null,
+          generation: {
+            inputTray: [],
+            results: [],
+            isGenerating: false,
+            selectedVideoModel: 'veo3',
+          }
+        };
+
+        // ===== Core App Logic =====
+        function createScene(overrides = {}) {
+          return { id: crypto.randomUUID(), prompt: '', script: '', time: '3秒', mediaSrc: '', mediaAlt: 'Scene preview', mediaType: 'image', isGenerating: false, endImageSrc: '', ...overrides };
+        }
+        const escapeHtml = (str) => String(str ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+        const guessMediaType = (src) => (/\.(mp4|webm|mov)$/i.test(src) ? 'video' : 'image');
+        const chunk = (list, size) => Array.from({ length: Math.ceil(list.length / size) }, (v, i) => list.slice(i * size, i * size + size));
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.textContent = message;
+            toast.style.cssText = `position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; z-index: 10001; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); transition: all 0.3s; opacity: 0;`;
+            document.body.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '1'; toast.style.top = '30px'; }, 10);
+            setTimeout(() => { toast.style.opacity = '0'; toast.style.top = '20px'; setTimeout(() => toast.remove(), 300); }, 2500);
+        }
+
+        // ===== Rendering =====
+        function renumberScenes() {
+          state.scenes.forEach((scene, index) => { scene.cut = String(index + 1).padStart(3, '0'); });
+          cutMeta.textContent = `カット: ${state.scenes.length}`;
+        }
+
+        function renderAll() {
+          renumberScenes();
+          renderSpread();
+          renderVertical();
+          updateInputTray();
+        }
+
+        function renderSpread() {
+            const pages = chunk(state.scenes, 2);
+            spreadView.innerHTML = `<div class="story-gen__spread-pages">${pages.map(pageScenes => {
+                const pageHtml = pageScenes.map((scene, index) => {
+                    const isSelected = state.selectedSceneId === scene.id;
+                    const selectedClass = isSelected ? 'story-gen__scene-card--selected' : '';
+                    const sceneIndex = state.scenes.findIndex(s => s.id === scene.id);
+
+                    return `
+                      <div class="story-gen__spread-scene-wrapper" data-scene-id="${scene.id}">
+                        <div class="story-gen__spread-page ${selectedClass}">
+                          <div class="story-gen__spread-header"><span>CUT ${escapeHtml(scene.cut)}</span></div>
+                          ${buildSpreadMedia(scene, sceneIndex)}
+                          <table class="story-gen__spread-table">
+                              <tbody>
+                                  <tr>
+                                    <th>PROMPT</th>
+                                    <td><textarea class="story-gen__shared-textarea" data-field="prompt" data-scene-id="${scene.id}" placeholder="ここにシーンのテキストプロンプトを入力してください。">${escapeHtml(scene.prompt)}</textarea></td>
+                                  </tr>
+                                  <tr>
+                                    <th>MEMO</th>
+                                    <td><textarea class="story-gen__shared-textarea" data-field="script" data-scene-id="${scene.id}" placeholder="BGM / SE / 演出メモなどを自由に記載できます。">${escapeHtml(scene.script)}</textarea></td>
+                                  </tr>
+                              </tbody>
+                          </table>
+                        </div>
+                      </div>`;
+                }).join('');
+                return `<div class="story-gen__spread-page-container">${pageHtml}</div>`;
+            }).join('')}</div>`;
+            bindSpreadViewInputs();
+        }
+
+        function buildSpreadMedia(scene, index) {
+            const mediaContent = scene.mediaSrc
+                ? (scene.mediaType === 'video'
+                    ? `<video src="${escapeHtml(scene.mediaSrc)}" class="story-gen__spread-media story-gen__spread-media--video" controls></video>`
+                    : `<img src="${escapeHtml(scene.mediaSrc)}" alt="${escapeHtml(scene.mediaAlt)}" class="story-gen__spread-media">`)
+                : `<div class="story-gen__spread-media story-gen__spread-media--placeholder">メディア未設定</div>`;
+
+            const isGenerating = scene.isGenerating;
+            const animateButtonHtml = `<button type="button" class="story-gen__button story-gen__button--small" data-action="animate" data-scene-id="${scene.id}" style="background: linear-gradient(45deg, #f97316, #f59e0b);" ${isGenerating ? 'disabled' : ''}>${isGenerating ? '<span class="loading-spinner" style="border-color: #ffffff33; border-top-color: #fff; margin-right: 4px; width: 14px; height: 14px;"></span>Generating...' : 'Animate'}</button>`;
+
+            const endImageThumbnail = scene.endImageSrc
+                ? `<img src="${escapeHtml(scene.endImageSrc)}" style="width: 64px; height: 64px; object-fit: cover; border-radius: 6px; border: 2px solid #a7f3d0;" alt="End Image">`
+                : `<div style="width: 64px; height: 64px; background: #f1f5f9; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; text-align: center;">End Image</div>`;
+
+            return `
+              <div class="story-gen__media-container" style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; gap: 12px; align-items: flex-start;">
+                    <div style="flex: 1;">${mediaContent}</div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
+                      ${endImageThumbnail}
+                      <button type="button" class="story-gen__button story-gen__button--subtle story-gen__button--small" data-action="open-end-image-gallery" data-scene-id="${scene.id}">Select...</button>
+                    </div>
+                </div>
+                <div class="story-gen__media-actions" style="display:flex; gap:8px;">
+                  <button type="button" class="story-gen__button story-gen__button--subtle story-gen__button--small" data-action="open-media" data-index="${index}">ギャラリー...</button>
+                  ${animateButtonHtml}
+                </div>
+              </div>`;
+        }
+
+        function renderVertical() {
+            verticalView.innerHTML = `<div class="story-gen__scene-list">${state.scenes.map((scene, index) => buildVerticalCard(scene, index)).join('')}</div>`;
+            bindVerticalViewInputs();
+        }
+
+        function buildVerticalCard(scene, index) {
+            const mediaPreview = scene.mediaSrc ? `<${scene.mediaType} src="${escapeHtml(scene.mediaSrc)}" ${scene.mediaType === 'video' ? 'controls' : `alt="${escapeHtml(scene.mediaAlt)}"`}></${scene.mediaType}>` : '<div class="story-gen__media-placeholder">メディア未設定</div>';
+            const isSelected = state.selectedSceneId === scene.id;
+            const selectedClass = isSelected ? 'story-gen__scene-card--selected' : '';
+            const isGenerating = scene.isGenerating;
+            const animateButtonHtml = `<button type="button" data-action="animate" data-scene-id="${scene.id}" ${isGenerating ? 'disabled' : ''}>${isGenerating ? '<span class="loading-spinner" style="border-color: #ffffff33; border-top-color: #fff; margin-right: 4px; width: 14px; height: 14px;"></span>Generating...' : 'Animate'}</button>`;
+
+            const endImageThumbnail = scene.endImageSrc
+                ? `<img src="${escapeHtml(scene.endImageSrc)}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid #a7f3d0;" alt="End Image">`
+                : `<div style="width: 80px; height: 80px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; text-align: center;">End Image</div>`;
+
+            return `
+              <article class="story-gen__scene-card ${selectedClass}" data-scene-id="${scene.id}">
+                <div class="story-gen__scene-header"><span>CUT ${escapeHtml(scene.cut)}</span></div>
+                <div class="story-gen__scene-body">
+                  <div class="story-gen__scene-media">
+                    <div style="display: flex; gap: 12px; align-items: flex-start;">
+                      <div class="story-gen__media-preview" style="flex:1;">${mediaPreview}</div>
+                      <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
+                        ${endImageThumbnail}
+                        <button type="button" class="story-gen__button story-gen__button--subtle story-gen__button--small" data-action="open-end-image-gallery" data-scene-id="${scene.id}">Select...</button>
+                      </div>
+                    </div>
+                    <div class="story-gen__media-actions">
+                      <button type="button" data-action="open-media" data-index="${index}">ギャラリーから選択</button>
+                      ${animateButtonHtml}
+                    </div>
+                  </div>
+                  <div class="story-gen__field--prompt"><label>プロンプト</label><textarea class="story-gen__shared-textarea" data-field="prompt" data-index="${index}" placeholder="ここにシーンのテキストプロンプトを入力してください。">${escapeHtml(scene.prompt)}</textarea></div>
+                  <div class="story-gen__field--script"><label>メモ</label><textarea class="story-gen__shared-textarea" data-field="script" data-index="${index}" placeholder="BGM / SE / 演出メモなどを自由に記載できます。">${escapeHtml(scene.script)}</textarea></div>
+                </div>
+              </article>`;
+        }
+
+        // ===== Event Binding =====
+        function handleSceneCardClick(e) {
+            if (e.target.closest('button, textarea, input, select, a')) return;
+            const card = e.currentTarget;
+            const sceneId = card.dataset.sceneId;
+            state.selectedSceneId = state.selectedSceneId === sceneId ? null : sceneId;
+            renderAll();
+        }
+
+        function bindVerticalViewInputs() {
+            verticalView.querySelectorAll('.story-gen__scene-card').forEach(card => {
+                card.addEventListener('click', handleSceneCardClick);
+
+                const sceneIndex = state.scenes.findIndex(s => s.id === card.dataset.sceneId);
+                if (sceneIndex === -1) return;
+
+                card.querySelectorAll('[data-field]').forEach(el => {
+                    el.addEventListener('input', () => {
+                        const scene = state.scenes[sceneIndex];
+                        if(scene) scene[el.dataset.field] = el.value;
+                        renderSpread(); // Keep spread view in sync
+                    });
+                });
+
+                card.querySelector('[data-action="open-media"]')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openModal({ type: 'scene', index: sceneIndex });
+                });
+
+                card.querySelector('[data-action="animate"]')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const scene = state.scenes[sceneIndex];
+                    if (scene) handleAnimateGenerate(scene);
+                });
+
+                card.querySelector('[data-action="open-end-image-gallery"]')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openModal({ type: 'end-image', sceneId: card.dataset.sceneId });
+                });
+            });
+        }
+
+        function bindSpreadViewInputs() {
+            spreadView.querySelectorAll('.story-gen__spread-scene-wrapper').forEach(wrapper => {
+                // Scene selection
+                wrapper.addEventListener('click', handleSceneCardClick);
+
+                const sceneId = wrapper.dataset.sceneId;
+                const sceneIndex = state.scenes.findIndex(s => s.id === sceneId);
+                if (sceneIndex === -1) return;
+
+                // Textarea inputs
+                wrapper.querySelectorAll('textarea[data-field]').forEach(el => {
+                    el.addEventListener('input', (e) => {
+                        e.stopPropagation();
+                        const scene = state.scenes.find(s => s.id === el.dataset.sceneId);
+                        if (scene) {
+                            scene[el.dataset.field] = el.value;
+                            // Sync with vertical view's corresponding textarea
+                            const verticalTextarea = verticalView.querySelector(`[data-scene-id="${scene.id}"] [data-field="${el.dataset.field}"]`);
+                            if (verticalTextarea) verticalTextarea.value = el.value;
+                        }
+                    });
+                });
+
+                // Gallery button
+                wrapper.querySelector('[data-action="open-media"]')?.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent card click
+                    openModal({ type: 'scene', index: sceneIndex });
+                });
+
+                // Animate button
+                wrapper.querySelector('[data-action="animate"]')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const scene = state.scenes[sceneIndex];
+                    if (scene) handleAnimateGenerate(scene);
+                });
+
+                // End Image Gallery button
+                wrapper.querySelector('[data-action="open-end-image-gallery"]')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openModal({ type: 'end-image', sceneId: sceneId });
+                });
+            });
+        }
+
+        // ===== Modal & Gallery =====
+        function openModal(target) {
+            if (!window.KamuiGalleryManager) return alert('Gallery Manager not loaded.');
+            state.mediaTarget = target;
+            window.KamuiGalleryManager.setOwner('story-gen', handleGallerySelection);
+            modal.hidden = false;
+        }
+
+        function closeModal() {
+            modal.hidden = true;
+            if (window.KamuiGalleryManager) window.KamuiGalleryManager.clearOwner();
+            state.mediaTarget = null;
+        }
+
+        function handleGallerySelection(data) {
+            const src = data.url || data.path;
+            if (!src) { closeModal(); return; }
+
+            const targetType = state.mediaTarget?.type;
+            if (targetType === 'scene') {
+                const scene = state.scenes[state.mediaTarget.index];
+                if (scene) {
+                    scene.mediaSrc = src;
+                    scene.mediaType = guessMediaType(src);
+                    scene.mediaAlt = data.name || 'Selected media';
+                }
+            } else if (targetType === 'end-image') {
+                const scene = state.scenes.find(s => s.id === state.mediaTarget.sceneId);
+                if (scene) {
+                    scene.endImageSrc = src;
+                }
+            } else {
+                state.generation.inputTray.push({ src, name: data.name });
+                updateInputTray();
+                showToast('画像を入力トレイに追加しました');
+            }
+            closeModal();
+            renderAll();
+        }
+
+        // ===== Generation Logic =====
+        function updateInputTray() {
+            inputTray.innerHTML = state.generation.inputTray.map((item, index) => `
+              <div class="story-gen__input-tray-item">
+                <img src="${escapeHtml(item.src)}" alt="${escapeHtml(item.name || '')}">
+                <button data-index="${index}" title="Remove">&times;</button>
+              </div>`).join('');
+            inputTrayInfo.textContent = `対象: ${state.generation.inputTray.length}件`;
+        }
+
+        function addResult(imageUrl) {
+            const resultItem = document.createElement('div');
+            resultItem.className = 'story-gen__result-item';
+            resultItem.innerHTML = `<img src="${escapeHtml(imageUrl)}" alt="Generated image">`;
+            resultGrid.insertBefore(resultItem, resultGrid.firstChild);
+        }
+
+        function handleGenerationResult(scene, resultUrl) {
+            if (scene) {
+                scene.mediaSrc = resultUrl;
+                scene.mediaType = guessMediaType(resultUrl);
+                storyGenLog(`✅ シーン ${scene.cut} に結果を反映しました。`);
+            } else {
+                storyGenLog('⚠️ 生成成功、しかし反映先のシーンが未選択です。結果をグリッドに表示します。');
+                addResult(resultUrl);
+            }
+        }
+
+        // ===== MCP / Uploading Helpers (ported from direct-drawing) =====
+        const uploadBaseCandidates = (window.__UPLOAD_BASE_CANDIDATES__ = window.__UPLOAD_BASE_CANDIDATES__ || ['http://localhost:3001', 'http://127.0.0.1:3001']);
+        const toAbsoluteUrl = (u) => { try { return new URL(u, document.baseURI).href; } catch(e) { return u; } };
+        async function postJson(endpoint, payload) {
+            const resp = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(`HTTP error ${resp.status}: ${data.error || resp.statusText}`);
+            return data;
+        }
+        async function uploadOne(url) {
+            const abs = toAbsoluteUrl(url);
+            for (const base of uploadBaseCandidates) {
+                try {
+                    const endpoint = `${base}/upload`;
+                    storyGenLog(`アップロード試行: ${endpoint}`);
+                    const data = await postJson(endpoint, { url: abs });
+                    const uploaded = data.uploaded_url || data.url || data.public_url;
+                    if (uploaded) return uploaded;
+                } catch (err) {
+                    storyGenLog(`アップロード失敗: ${err.message}`);
+                }
+            }
+            throw new Error(`全てのアップロード候補で失敗しました: ${url}`);
+        }
+        async function uploadMany(urls) {
+            const out = [];
+            for (const u of urls) { out.push(await uploadOne(u)); }
+            return out;
+        }
+        const extractAnyUrl = (obj) => {
+          try {
+            if (!obj) return null;
+            if (typeof obj === 'string') {
+              const s = String(obj);
+              const m = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+              if (m && m[1]) { try { const j = JSON.parse(m[1]); const u = extractAnyUrl(j); if (u) return u; } catch(_){} }
+              const re = /https?:\/\/[^\s<>"'()]+/g;
+              const list = s.match(re);
+              if (list && list.length) {
+                const img = list.find(u => /\.(png|jpe?g|webp|gif|bmp|svg)(\?|#|$)/i.test(u));
+                return img || list[0];
+              }
+              return null;
+            }
+            if (Array.isArray(obj)) {
+              for (const it of obj){ const u = extractAnyUrl(it); if (u) return u; }
+              return null;
+            }
+            if (typeof obj === 'object') {
+              const keys = ['url','image_url','image','result_url','download_url','href'];
+              for (const k of keys){ if (obj && obj[k]){ const u = extractAnyUrl(obj[k]); if (u) return u; } }
+              if (obj && obj.content) { const u = extractAnyUrl(obj.content); if (u) return u; }
+              for (const v of Object.values(obj)){ const u = extractAnyUrl(v); if (u) return u; }
+            }
+            return null;
+          } catch(_) { return null; }
+        };
+
+        function pickRequestId(res){
+          try {
+            const cands = [res?.result?.request_id, res?.result?.id, res?.request_id, res?.id];
+            for (const v of cands){ if (typeof v === 'string' && v.trim()) return v.trim(); }
+            return null;
+          } catch(_){ return null; }
+        }
+
+        function normalizeState(s){
+            if (!s) return null;
+            const x = String(s).trim().toLowerCase().replace(/\s+/g,' ').replace(/[-]/g,'_');
+            if (/in[_ ]?progress|processing|running/.test(x)) return 'IN_PROGRESS';
+            if (/in[_ ]?queue|queued|waiting|pending/.test(x)) return 'IN_QUEUE';
+            if (/done|completed|complete|finished|ready|success|succeeded|ok/.test(x)) return 'DONE';
+            if (/error|failed|failure/.test(x)) return 'ERROR';
+            if (/処理中/.test(x)) return 'IN_PROGRESS';
+            if (/待機|キュー|保留/.test(x)) return 'IN_QUEUE';
+            if (/完了|成功/.test(x)) return 'DONE';
+            if (/失敗|エラー/.test(x)) return 'ERROR';
+            if (/process|progress/.test(x)) return 'IN_PROGRESS';
+            return null;
+        }
+
+        function extractStatusState(obj){
+          try {
+            const cand = [
+              obj?.result?.status, obj?.status, obj?.result?.state, obj?.state
+            ].find(v => typeof v === 'string' && v.trim());
+            if (cand) return normalizeState(cand);
+            const texts = [];
+            const collect = (o)=>{
+              if (!o) return;
+              if (typeof o === 'string') texts.push(o);
+              else if (Array.isArray(o)) o.forEach(collect);
+              else if (typeof o === 'object') Object.values(o).forEach(collect);
+            };
+            collect(obj);
+            for (const t of texts){
+              const plain = String(t).replace(/[\*`_~>|]/g,'');
+              const m1 = plain.match(/status\s*[:：]\s*([A-Za-z_\-\s]+)/i);
+              if (m1 && m1[1]) return normalizeState(m1[1]);
+              const m2 = plain.match(/ステータス\s*[:：]\s*([\p{L}_\-\s]+)/u);
+              if (m2 && m2[1]) return normalizeState(m2[1]);
+              const s = normalizeState(plain);
+              if (s) return s;
+            }
+            return null;
+          } catch(_) { return null; }
+        }
+
+        async function rawCallTool(client, mcpUrl, toolName, args) {
+            const headers = { 'Content-Type':'application/json', 'Accept':'application/json' };
+            if (client && client.sessionId) headers['mcp-session-id'] = client.sessionId;
+            const serverConfig = mcpConfigManager.getServer(mcpUrl);
+            if (serverConfig && serverConfig.authorization) headers['Authorization'] = serverConfig.authorization;
+
+            const body = { jsonrpc:'2.0', id: Date.now(), method:'tools/call', params:{ name: toolName, arguments: args } };
+            storyGenLog('raw submit JSON-RPC 試行 body=' + JSON.stringify(body));
+
+            const resp = await fetch(mcpUrl, { method:'POST', headers, body: JSON.stringify(body) });
+            const txt = await resp.text();
+            storyGenLog('raw submit 応答: ' + txt.slice(0, 800));
+            const hdrs = {};
+            try { resp.headers.forEach((v,k)=>hdrs[k]=v); } catch(_){ }
+            storyGenLog('raw submit headers: ' + JSON.stringify(hdrs));
+            let obj = null;
+            try { obj = JSON.parse(txt); } catch(_){ obj = null; }
+            return { obj, txt, headers: hdrs };
+        }
+
+        function extractRequestIdFromText(obj){
+          try {
+            const txts = [];
+            const collect = (o)=>{
+              if (!o) return;
+              if (typeof o === 'string') txts.push(o);
+              else if (Array.isArray(o)) o.forEach(collect);
+              else if (typeof o === 'object') Object.values(o).forEach(collect);
+            };
+            collect(obj);
+            const reUuid = /request[\s_-]*id[^A-Za-z0-9]{0,10}[*_`>~\s\r\n]*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/i;
+            for (const t of txts){
+              const m = String(t).match(reUuid);
+              if (m && m[1]) return m[1];
+            }
+            const reGeneric = /(request[\s_-]*id|task[\s_-]*id|job[\s_-]*id|id)\s*[:=]\s*[*_`>~"“”'\-]*\s*([A-Za-z0-9._\-]{6,})/i;
+            for (const t of txts){
+              const m = String(t).match(reGeneric);
+              if (m && m[2]){
+                const v = m[2].trim();
+                if (!/^\d+$/.test(v)) return v;
+              }
+            }
+            return null;
+          } catch(_){ return null; }
+        }
+
+        // ===== Debug Log =====
+        function storyGenLog(msg){
+            if (!debugLogEl) return;
+            const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            debugLogEl.textContent += (debugLogEl.textContent ? '\n' : '') + line;
+            if (logAutoscroll.checked) debugLogEl.scrollTop = debugLogEl.scrollHeight;
+        }
+        function clearStoryGenLogs() {
+            if(debugLogEl) debugLogEl.textContent = '';
+        }
+
+        // ===== Main Generation Handlers =====
+        async function handleAnimateGenerate(scene) {
+            if (scene.isGenerating) return;
+
+            const prompt = scene.prompt.trim();
+            if (!prompt) {
+                alert('アニメーションさせるには、シーンにプロンプトを入力してください。');
+                return;
+            }
+            if (!scene.mediaSrc) {
+                alert('アニメーションさせるには、シーンに画像を設定してください。');
+                return;
+            }
+            if (guessMediaType(scene.mediaSrc) !== 'image') {
+                alert('動画から動画を生成することはまだできません。画像を選択してください。');
+                return;
+            }
+
+            scene.isGenerating = true;
+            renderAll();
+
+            const mediaPreviewEl = document.querySelector(`[data-scene-id="${scene.id}"] .story-gen__media-preview, [data-scene-id="${scene.id}"] .story-gen__media-container`);
+            let loadingOverlay = null;
+            if (mediaPreviewEl) {
+                loadingOverlay = document.createElement('div');
+                loadingOverlay.className = 'story-gen__loading-overlay';
+                loadingOverlay.innerHTML = '<span class="loading-spinner" style="border-color: #1e293b33; border-top-color: #1e293b;"></span> Animating...';
+                mediaPreviewEl.appendChild(loadingOverlay);
+            }
+
+            const model = state.generation.selectedVideoModel;
+            storyGenLog(`🚀 ${model} アニメーション生成開始...`);
+
+            try {
+                // Determine model-specific settings
+                const modelSettings = {
+                    veo3: {
+                        serverFilter: 'veo3/fast',
+                        toolPrefix: 'veo3_fast_i2v',
+                        needsEndImage: false
+                    },
+                    'hailuo-02': {
+                        serverFilter: 'hailuo-02/pro',
+                        toolPrefix: 'hailuo_02',
+                        needsEndImage: true
+                    }
+                }[model];
+
+                if (!modelSettings) {
+                    throw new Error(`未対応の動画モデルです: ${model}`);
+                }
+
+                // Upload necessary images
+                storyGenLog('画像をアップロード中...');
+                const uploadedUrl = await uploadOne(scene.mediaSrc);
+                let uploadedEndImageUrl = null;
+                if (modelSettings.needsEndImage && scene.endImageSrc) {
+                    uploadedEndImageUrl = await uploadOne(scene.endImageSrc);
+                    storyGenLog(`エンドイメージをアップロード: ${uploadedEndImageUrl}`);
+                }
+                storyGenLog(`メイン画像アップロード完了: ${uploadedUrl}`);
+
+                // Find server
+                const servers = mcpConfigManager.getServers();
+                const found = Object.entries(servers).find(([_, cfg]) => (cfg.url || '').includes(modelSettings.serverFilter));
+                if (!found) throw new Error(`MCPサーバーが未設定です。「${modelSettings.serverFilter}」を含むサーバーを追加してください。`);
+
+                const [serverName, serverConfig] = found;
+                storyGenLog(`使用サーバー: ${serverName}`);
+
+                let mcpUrl = serverConfig.url;
+                const kamuiCodeUrl = window.KAMUI_CODE_URL;
+                if (kamuiCodeUrl) {
+                    const testRegex = new RegExp(`^https?://${kamuiCodeUrl}/`, 'i');
+                    const replaceRegex = new RegExp(`^https?://${kamuiCodeUrl}`, 'i');
+                    if (testRegex.test(mcpUrl)) {
+                        const pathPart = mcpUrl.replace(replaceRegex, '');
+                        mcpUrl = 'http://localhost:3001' + (pathPart.startsWith('/mcp') ? '' : '/mcp') + pathPart;
+                        storyGenLog('プロキシ経由URL変換: ' + mcpUrl);
+                    }
+                }
+
+                const client = new HttpMcpClient(mcpUrl, { authorization: serverConfig.authorization });
+                await client.initialize();
+
+                // Find tools and build arguments
+                const tools = (await client.listTools()).result.tools;
+                const submitTool = tools.find(t => t.name.includes(`${modelSettings.toolPrefix}_submit`)).name;
+                const statusTool = tools.find(t => t.name.includes(`${modelSettings.toolPrefix}_status`)).name;
+                const resultTool = tools.find(t => t.name.includes(`${modelSettings.toolPrefix}_result`)).name;
+
+                const submitArgs = { prompt, image_url: uploadedUrl, duration_seconds: 4 };
+                if (uploadedEndImageUrl) {
+                    submitArgs.end_image_url = uploadedEndImageUrl;
+                }
+                storyGenLog(`Submit tool: ${submitTool} with args: ${JSON.stringify(submitArgs)}`);
+
+                const raw = await rawCallTool(client, mcpUrl, submitTool, submitArgs);
+
+                const requestId = pickRequestId(raw.obj) || extractRequestIdFromText((raw.obj && raw.obj.result) || raw.obj) || extractRequestIdFromText(raw.txt) || raw.headers['x-request-id'] || raw.headers['request-id'] || raw.headers['mcp-request-id'];
+                storyGenLog(`Request ID: ${requestId}`);
+
+                if (!requestId) {
+                    throw new Error('レスポンスからRequest IDを抽出できませんでした。');
+                }
+
+                let isDone = false;
+                const pollingIterations = model === 'hailuo-02' ? 36 : 18; // 6 mins for hailuo, 3 for others
+                for (let i = 0; i < pollingIterations; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 10000));
+                    const statusResRaw = await rawCallTool(client, mcpUrl, statusTool, { request_id: requestId });
+                    const status = extractStatusState(statusResRaw.obj || statusResRaw.txt);
+                    storyGenLog(`ステータス: ${status || '(不明)'}`);
+                    if (status === 'DONE') { isDone = true; break; }
+                    if (status === 'ERROR') throw new Error('生成に失敗しました。');
+                }
+
+                if (!isDone) throw new Error('生成がタイムアウトしました。');
+
+                const resultRes = await client.callTool(resultTool, { request_id: requestId });
+                const resultUrl = extractAnyUrl(resultRes.result);
+                if (!resultUrl) throw new Error('結果URLが見つかりませんでした。');
+
+                handleGenerationResult(scene, resultUrl);
+
+            } catch (error) {
+                storyGenLog(`❌ ${model} 生成失敗: ${error.message}`);
+                console.error(error);
+                alert(`${model}の生成に失敗しました。詳細はデバッグログを確認してください。`);
+            } finally {
+                scene.isGenerating = false;
+                if (loadingOverlay) loadingOverlay.remove();
+                renderAll();
+            }
+        }
+
+        async function handleGenericGenerate(options) {
+            const { modelName, buttonEl, buttonTextEl, serverFilter, toolFilters } = options;
+
+            const anyJobRunning = state.scenes.some(s => s.isGenerating);
+            if (anyJobRunning) {
+                alert('現在別のシーンを処理中です。完了するまでお待ちください。');
+                return;
+            }
+            if (!state.selectedSceneId) {
+                alert('画像を反映させる先のシーンをクリックして選択してください。');
+                return;
+            }
+            const scene = state.scenes.find(s => s.id === state.selectedSceneId);
+            if (!scene) {
+                alert('選択されたシーンが見つかりません。');
+                return;
+            }
+            if (scene.isGenerating) {
+                 alert('選択されたシーンは現在処理中です。');
+                return;
+            }
+
+            const prompt = promptInput.value.trim();
+            if (!prompt) {
+                alert('プロンプトを入力してください。');
+                return;
+            }
+            const inputUrls = state.generation.inputTray.map(item => item.src);
+            if (inputUrls.length === 0) {
+                alert('入力画像を1枚以上設定してください。');
+                return;
+            }
+
+            scene.isGenerating = true;
+            buttonTextEl.innerHTML = `<span class="loading-spinner"></span> Generating...`;
+            renderAll(); // To update button states
+            storyGenLog(`🚀 ${modelName} 生成開始...`);
+
+            try {
+                storyGenLog('画像をアップロード中...');
+                const uploadedUrls = await uploadMany(inputUrls);
+                storyGenLog(`アップロード完了: ${uploadedUrls.length}件`);
+
+                const servers = mcpConfigManager.getServers();
+                const found = Object.entries(servers).find(([_, cfg]) => (cfg.url || '').includes(serverFilter));
+                if (!found) throw new Error(`MCPサーバーが未設定です。${serverFilter} を含むサーバーを追加してください。`);
+
+                const [serverName, serverConfig] = found;
+                storyGenLog(`使用サーバー: ${serverName}`);
+
+                let mcpUrl = serverConfig.url;
+                const kamuiCodeUrl = window.KAMUI_CODE_URL;
+                if (kamuiCodeUrl) {
+                    const testRegex = new RegExp(`^https?://${kamuiCodeUrl}/`, 'i');
+                    const replaceRegex = new RegExp(`^https?://${kamuiCodeUrl}`, 'i');
+                    if (testRegex.test(mcpUrl)) {
+                        const pathPart = mcpUrl.replace(replaceRegex, '');
+                        mcpUrl = 'http://localhost:3001/mcp' + pathPart;
+                        storyGenLog('プロキシ経由URL変換: ' + mcpUrl);
+                    }
+                }
+
+                const client = new HttpMcpClient(mcpUrl, { authorization: serverConfig.authorization });
+                await client.initialize();
+
+                const tools = (await client.listTools()).result.tools;
+                const submitTool = tools.find(t => t.name.includes(toolFilters.submit)).name;
+                const statusTool = tools.find(t => t.name.includes(toolFilters.status)).name;
+                const resultTool = tools.find(t => t.name.includes(toolFilters.result)).name;
+
+                const submitArgs = { prompt, image_urls: uploadedUrls, num_images: 1 };
+                storyGenLog(`Submit tool: ${submitTool} with args: ${JSON.stringify(submitArgs)}`);
+
+                const raw = await rawCallTool(client, mcpUrl, submitTool, submitArgs);
+                const requestId = pickRequestId(raw.obj) || extractRequestIdFromText((raw.obj && raw.obj.result) || raw.obj) || extractRequestIdFromText(raw.txt) || raw.headers['x-request-id'] || raw.headers['request-id'] || raw.headers['mcp-request-id'];
+                if (!requestId) throw new Error('レスポンスからRequest IDを抽出できませんでした。');
+                storyGenLog(`Request ID: ${requestId}`);
+
+                let isDone = false;
+                for (let i = 0; i < 30; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    const statusResRaw = await rawCallTool(client, mcpUrl, statusTool, { request_id: requestId });
+                    const status = extractStatusState(statusResRaw.obj || statusResRaw.txt);
+                    storyGenLog(`ステータス: ${status || '(不明)'}`);
+                    if (status === 'DONE') { isDone = true; break; }
+                    if (status === 'ERROR') throw new Error('生成に失敗しました。');
+                }
+
+                if (!isDone) throw new Error('生成がタイムアウトしました。');
+
+                const resultRes = await client.callTool(resultTool, { request_id: requestId });
+                const resultUrl = extractAnyUrl(resultRes.result);
+                if (!resultUrl) throw new Error('結果URLが見つかりませんでした。');
+
+                handleGenerationResult(scene, resultUrl);
+
+            } catch (error) {
+                storyGenLog(`❌ ${modelName} 生成失敗: ${error.message}`);
+                console.error(error);
+                alert(`${modelName}の生成に失敗しました。詳細はデバッグログを確認してください。`);
+            } finally {
+                scene.isGenerating = false;
+                buttonTextEl.textContent = modelName;
+                renderAll();
+            }
+        }
+
+        // ===== Initial Setup =====
+        async function initialize() {
+          // Expose functions and state for external scripts
+          window.showToast = showToast;
+          window.renderAll = renderAll;
+          window.storyGenState = state;
+          window.storyGenAppInitialized = true;
+          window.dispatchEvent(new CustomEvent('storyGenAppReady'));
+
+          // DOM Elements
+          const toggles = app.querySelectorAll('[data-view-mode]');
+          const videoModelSelect = document.getElementById('videoModelSelect');
+
+          // Event Listeners
+          videoModelSelect.addEventListener('change', (e) => {
+            state.generation.selectedVideoModel = e.target.value;
+            storyGenLog(`Animation model changed to: ${e.target.value}`);
+          });
+          addSceneBtn.addEventListener('click', () => { state.scenes.push(createScene()); renderAll(); });
+          resetBtn.addEventListener('click', () => { if(confirm('全てのシーンをリセットしますか？')) { state.scenes = [createScene()]; state.selectedSceneId = null; renderAll(); } });
+          toggles.forEach(btn => btn.addEventListener('click', () => {
+              document.querySelectorAll('[data-view-mode]').forEach(b => b.classList.remove('story-gen__toggle--active'));
+              btn.classList.add('story-gen__toggle--active');
+              spreadView.hidden = btn.dataset.viewMode !== 'spread';
+              verticalView.hidden = btn.dataset.viewMode !== 'vertical';
+          }));
+          modal.addEventListener('click', e => (e.target === modal || e.target.dataset.action === 'close-modal') && closeModal());
+          openMediaGalleryForInputBtn.addEventListener('click', () => openModal({ type: 'input' }));
+          clearInputTrayBtn.addEventListener('click', () => { state.generation.inputTray = []; updateInputTray(); });
+          inputTray.addEventListener('click', e => {
+              if (e.target.tagName === 'BUTTON') {
+                  state.generation.inputTray.splice(e.target.dataset.index, 1);
+                  updateInputTray();
+              }
+          });
+
+          // Debug log events
+          logCopyBtn.addEventListener('click', () => navigator.clipboard.writeText(debugLogEl.textContent));
+          logClearBtn.addEventListener('click', clearStoryGenLogs);
+
+          // Generation buttons
+          nanoBtn.addEventListener('click', () => handleGenericGenerate({
+              modelName: 'Nano Banana Edit',
+              buttonEl: nanoBtn,
+              buttonTextEl: nanoBtnText,
+              serverFilter: 'nano-banana',
+              toolFilters: { submit: 'submit', status: 'status', result: 'result' }
+          }));
+          seedBtn.addEventListener('click', () => handleGenericGenerate({
+              modelName: 'Seedream Edit',
+              buttonEl: seedBtn,
+              buttonTextEl: seedBtnText,
+              serverFilter: 'seedream',
+              toolFilters: { submit: 'submit', status: 'status', result: 'result' }
+          }));
+
+          // Initial Render
+          dateMeta.textContent = `日付: ${new Date().toISOString().split('T')[0]}`;
+
+          // MCP Init
+          try {
+            if (typeof McpConfigManager === 'undefined') {
+                storyGenLog('⏳ McpConfigManagerの読み込み待機中...');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            if (typeof McpConfigManager === 'undefined') throw new Error('McpConfigManager not found');
+            mcpConfigManager = new McpConfigManager();
+            await mcpConfigManager.loadDefaultConfig();
+            storyGenLog('✅ MCP設定を読み込みました。');
+          } catch(e) {
+            storyGenLog(`❌ MCP設定の読み込みに失敗: ${e.message}`);
+            alert('MCP設定の読み込みに失敗しました。Direct Drawingページで先に設定を保存してください。');
+          }
+
+          renderAll();
+        }
+
+        initialize();
+      })();
+    </script>
+    <script src="/js/story-gen-save-load.js?v=0.1.0"></script>

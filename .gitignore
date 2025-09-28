@@ -1,0 +1,82 @@
+# --- General ---
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editor configuration
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Other generated/temporary files
+*.tmp
+*.temp
+.mcp.json
+
+# --- Project Specific ---
+
+# Ignore root node_modules, in case any exist
+/node_modules/
+
+# --- kamuios (active project) ---
+# Node dependencies
+/kamuios/node_modules/
+
+# Hugo generated files
+/kamuios/public/
+/kamuios/resources/
+/kamuios/.hugo_build.lock
+
+# Logs and process IDs
+/kamuios/logs/
+/kamuios/.pids/
+
+# Saved story generation data
+/kamuios/saves/
+
+# Environment variables for kamuios
+/kamuios/.env
+/kamuios/*.env
+!/kamuios/.env.sample
+
+
+# --- k-os-ERI (reference project) ---
+# Node dependencies
+/k-os-ERI/node_modules/
+
+# Hugo generated files
+/k-os-ERI/public/
+/k-os-ERI/resources/
+/k-os-ERI/.hugo_build.lock
+
+# Logs and process IDs
+/k-os-ERI/logs/
+/k-os-ERI/.pids/
+
+# Saved story generation data
+/k-os-ERI/saves/
+
+# Environment variables for k-os-ERI
+/k-os-ERI/.env
+/k-os-ERI/*.env
+!/k-os-ERI/.env.sample
+
+/k-os-ERI/backend/tasks-state.json
+# --- Root Environment variables ---
+# IMPORTANT: Never commit secret keys
+/.env
+/*.env
+.env.*
+!/.env.sample
+
+# Generated config files that may contain secrets
+/kamuios/static/mcp/config.json
+/k-os-ERI/static/mcp/config.json

@@ -1,0 +1,1340 @@
+# Directory Graph 3D
+# ディレクトリ構造を3Dネットワークで可視化
+
+- id: directory-graph-3d
+  category: 1
+  category_name: 3Dエディター
+  title: Directory Graph 3D
+  content: ""
+  custom_html: |
+    <script>
+      // THREEを先に読み込む（未ロード時のみ）
+      if (!window.THREE) {
+        const threeScript = document.createElement('script');
+        threeScript.src = '//cdn.jsdelivr.net/npm/three@0.158/build/three.min.js';
+        document.head.appendChild(threeScript);
+      }
+      // 3D Force Graphを一度だけ読み込む
+      if (!window.ForceGraph3DLoaded) {
+        const script = document.createElement('script');
+        script.src = '//cdn.jsdelivr.net/npm/3d-force-graph';
+        script.onload = () => {
+          window.ForceGraph3DLoaded = true;
+          console.log('3D Force Graph loaded');
+        };
+        document.head.appendChild(script);
+      }
+      // ARButton (WebXR) を読み込む
+      if (!(window.ARButton || (window.THREE && window.THREE.ARButton))) {
+        const arScript = document.createElement('script');
+        arScript.src = '//cdn.jsdelivr.net/npm/three@0.158/examples/js/webxr/ARButton.js';
+        arScript.onload = () => { window.__ARButtonLoaded = true; };
+        document.head.appendChild(arScript);
+      }
+    </script>
+    
+    <style>
+      body { margin: 0; }
+      .directory-graph-container {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 20px;
+      }
+      .directory-graph-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 16px;
+        text-align: center;
+      }
+      .directory-graph-main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        gap: 20px;
+        align-items: start;
+      }
+      .directory-graph-canvas-container {
+        flex: 1 1 70%;
+        height: 600px;
+        min-height: 600px;
+        background: #000003;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        position: relative;
+        min-width: 0;
+        overflow: hidden;
+      }
+      #directory-graph-3d-canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .directory-graph-info {
+        flex: 0 0 28%;
+        color: var(--text);
+        font-size: 0.9rem;
+        padding: 16px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      .directory-graph-info h3 {
+        color: var(--link);
+        margin: 0 0 12px 0;
+        font-size: 1.05rem;
+      }
+      .directory-graph-info ul {
+        margin: 0 0 8px 18px;
+      }
+      .directory-graph-info li {
+        margin-bottom: 6px;
+        line-height: 1.5;
+      }
+      .view-toggle {
+        margin-top: 12px;
+        display: flex;
+        gap: 8px;
+      }
+      .info-toggle {
+        margin-top: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .toggle-btn {
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--text);
+        cursor: pointer;
+      }
+      .toggle-btn.active {
+        background: var(--link);
+        color: #fff;
+      }
+      .info-btn {
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--text);
+        cursor: pointer;
+        font-size: 0.82rem;
+        transition: background 0.2s ease, border 0.2s ease, color 0.2s ease;
+      }
+      .info-btn:hover {
+        border-color: var(--link);
+        color: var(--link);
+      }
+      .info-btn.active {
+        background: var(--link);
+        color: #fff;
+        border-color: color-mix(in srgb, var(--link) 65%, #ffffff 35%);
+      }
+      .info-sections {
+        margin-top: 16px;
+      }
+      .info-section {
+        display: none;
+      }
+      .info-section.active {
+        display: block;
+      }
+      .info-heading {
+        margin: 0 0 12px 0;
+        font-size: 1.05rem;
+        color: var(--link);
+      }
+      .directory-stats {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+      }
+      .stat-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .stat-label {
+        color: var(--text-muted);
+      }
+      .stat-value {
+        font-weight: 600;
+        color: var(--link);
+      }
+      @media (max-width: 900px) {
+        .directory-graph-main {
+          grid-template-columns: 1fr;
+        }
+        .directory-graph-canvas-container {
+          height: 420px;
+        }
+        .directory-graph-info {
+          width: 100%;
+        }
+      }
+      .directory-graph-description {
+        color: var(--text);
+        line-height: 1.6;
+        margin-bottom: 16px;
+      }
+      .loading-message {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #ffffff;
+        font-size: 1.2rem;
+      }
+      /* ノードの凡例 */
+      .node-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+      }
+      .legend-label {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
+      .node-preview {
+        margin-top: 18px;
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: linear-gradient(160deg, rgba(15,23,42,0.65), rgba(15,23,42,0.35));
+        backdrop-filter: blur(6px);
+        box-shadow: 0 18px 40px rgba(15,23,42,0.45);
+      }
+
+      .node-preview h3 {
+        margin: 0 0 10px 0;
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .node-preview-meta {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 4px;
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        margin-bottom: 10px;
+      }
+
+      .node-preview-meta .meta-label {
+        display: inline-block;
+        min-width: 48px;
+        color: var(--text-weak);
+        margin-right: 6px;
+      }
+
+      .node-preview-meta code {
+        font-size: 0.78rem;
+        background: rgba(255,255,255,0.04);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+
+      .node-preview-body {
+        min-height: 180px;
+        max-height: 340px;
+        overflow: auto;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.06);
+        background: rgba(15,23,42,0.55);
+        padding: 10px;
+        position: relative;
+      }
+
+      .node-preview-body img,
+      .node-preview-body video {
+        max-width: 100%;
+        border-radius: 6px;
+        display: block;
+      }
+
+      .node-preview-body video,
+      .node-preview-body audio {
+        width: 100%;
+      }
+
+      .node-preview-body pre {
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        color: #e2e8f0;
+        background: rgba(15,23,42,0.75);
+        border-radius: 6px;
+        padding: 10px;
+      }
+
+      .node-preview-body .preview-placeholder {
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        text-align: center;
+      }
+
+      .node-preview-body .preview-section {
+        margin-bottom: 10px;
+      }
+
+      .node-preview-body .preview-section:last-child {
+        margin-bottom: 0;
+      }
+
+      .node-preview-body .preview-heading {
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.6);
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      .node-preview-body ul {
+        margin: 0;
+        padding-left: 18px;
+        font-size: 0.82rem;
+      }
+
+      .node-preview-body li {
+        color: rgba(226,232,240,0.85);
+        margin-bottom: 2px;
+      }
+
+      .node-preview-body .preview-note {
+        margin-top: 4px;
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.45);
+      }
+    </style>
+    
+    <div class="directory-graph-container">
+      <h2 class="directory-graph-title">Directory Graph 3D</h2>
+      
+      <div class="directory-graph-description">
+        SCAN_PATH配下のディレクトリ構造を3D空間で可視化。フォルダとファイルの関係性を
+        インタラクティブに探索できます。
+      </div>
+      
+      <div class="directory-graph-main">
+        <div class="directory-graph-canvas-container">
+          <div id="directory-graph-3d-canvas">
+            <div class="loading-message">ディレクトリ構造を読み込み中...</div>
+          </div>
+        </div>
+        
+      <div class="directory-graph-info">
+          <div class="view-toggle">
+            <button type="button" class="toggle-btn" id="toggle-color-mode">色で表示</button>
+            <button type="button" class="toggle-btn active" id="toggle-media-mode">メディアで表示</button>
+          </div>
+
+          <div class="info-toggle">
+            <button type="button" class="info-btn active" data-target="preview" aria-pressed="true">プレビュー</button>
+            <button type="button" class="info-btn" data-target="controls" aria-pressed="false">操作方法</button>
+            <button type="button" class="info-btn" data-target="stats" aria-pressed="false">統計情報</button>
+          </div>
+
+          <div class="info-sections">
+            <div class="info-section active" data-section="preview">
+              <div class="node-preview">
+                <h3>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="2" x2="12" y2="6"></line>
+                    <line x1="12" y1="18" x2="12" y2="22"></line>
+                    <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                    <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                  </svg>
+                  プレビュー
+                </h3>
+                <div class="node-preview-meta">
+                  <div><span class="meta-label">名前</span><span id="node-preview-name">-</span></div>
+                  <div><span class="meta-label">種別</span><span id="node-preview-type">-</span></div>
+                  <div><span class="meta-label">パス</span><code id="node-preview-path">-</code></div>
+                  <div><span class="meta-label">サイズ</span><span id="node-preview-size">-</span></div>
+                </div>
+                <div class="node-preview-body" id="node-preview-body">
+                  <div class="preview-placeholder">ノードにカーソルを合わせるとプレビューを表示します。</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="info-section" data-section="controls" hidden>
+              <h3 class="info-heading">操作方法</h3>
+              <ul>
+                <li><strong>マウス</strong>
+                  <ul>
+                    <li>ドラッグ: 視点変更</li>
+                    <li>ホイール: ズーム</li>
+                    <li>ダブルクリック: リセット</li>
+                  </ul>
+                </li>
+                <li><strong>ノード</strong>
+                  <ul>
+                    <li>クリック: 詳細表示</li>
+                    <li>ドラッグ: 移動</li>
+                    <li>ホバー: 名前表示</li>
+                  </ul>
+                </li>
+                <li><strong>キーボード</strong>
+                  <ul>
+                    <li>R: 再配置</li>
+                    <li>C: カメラリセット</li>
+                    <li>F: 全体フィット</li>
+                  </ul>
+                </li>
+              </ul>
+            </div>
+
+            <div class="info-section" data-section="stats" hidden>
+              <div class="directory-stats">
+                <h3 class="info-heading">統計情報</h3>
+                <div id="directory-stats-content">
+                  <div class="stat-item">
+                    <span class="stat-label">フォルダ数:</span>
+                    <span class="stat-value" id="folder-count">-</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">ファイル数:</span>
+                    <span class="stat-value" id="file-count">-</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">画像:</span>
+                    <span class="stat-value" id="image-count">-</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">動画:</span>
+                    <span class="stat-value" id="video-count">-</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">音声:</span>
+                    <span class="stat-value" id="audio-count">-</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">HTML:</span>
+                    <span class="stat-value" id="html-count">-</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="node-legend">
+                <div class="legend-item">
+                  <div class="legend-color" style="background: #ff6b6b;"></div>
+                  <span class="legend-label">ルート</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-color" style="background: #4ecdc4;"></div>
+                  <span class="legend-label">フォルダ</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-color" style="background: #ffa502;"></div>
+                  <span class="legend-label">画像</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-color" style="background: #6c5ce7;"></div>
+                  <span class="legend-label">動画</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-color" style="background: #feca57;"></div>
+                  <span class="legend-label">音声</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-color" style="background: #dfe6e9;"></div>
+                  <span class="legend-label">HTML</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <script type="module">
+      // 3D Force Graphが読み込まれるまで待機
+      function initDirectoryGraph() {
+        console.log('initDirectoryGraph called, ForceGraph3D:', typeof ForceGraph3D);
+        if (typeof ForceGraph3D === 'undefined') {
+          setTimeout(initDirectoryGraph, 100);
+          return;
+        }
+        
+        // 対象セクションが可視になるのを待ってから初期化
+        const section = document.getElementById('directory-graph-3d');
+        const canvasEl = document.getElementById('directory-graph-3d-canvas');
+        const waitUntilVisible = () => {
+          if (!section || !canvasEl) {
+            setTimeout(waitUntilVisible, 200);
+            return;
+          }
+          const visible = window.getComputedStyle(section).display !== 'none';
+          const rect = canvasEl.getBoundingClientRect();
+          if (visible && rect.width > 0 && rect.height > 0) {
+            fetchDirectoryStructure().then(data => {
+              if (data) createDirectoryGraph(data);
+            });
+          } else {
+            setTimeout(waitUntilVisible, 200);
+          }
+        };
+        waitUntilVisible();
+      }
+      
+      // バックエンドベースURL（ngrok/localhost/プロキシ）
+      function getBackendBase() {
+        const cleanup = (value) => {
+          if (!value || typeof value !== 'string') return null;
+          return value.trim().replace(/\/$/, '') || null;
+        };
+
+        const remember = (value) => {
+          try {
+            if (value) localStorage.setItem('kamuiBackend', value);
+          } catch(_) {}
+        };
+
+        try {
+          const params = new URLSearchParams(location.search);
+          const q = cleanup(params.get('backend'));
+          if (q) {
+            remember(q);
+            return q;
+          }
+        } catch(_) {}
+
+        // Taskboard 側の永続化データにベースURLがあれば優先
+        try {
+          const raw = localStorage.getItem('kamui_task_board_v1');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const persisted = cleanup(parsed && parsed.backendBase);
+            if (persisted) {
+              remember(persisted);
+              return persisted;
+            }
+          }
+        } catch(_) {}
+
+        try {
+          const saved = cleanup(localStorage.getItem('kamuiBackend'));
+          if (saved) return saved;
+        } catch(_) {}
+
+        if (typeof window !== 'undefined') {
+          const globalBase = cleanup(window.KAMUI_BACKEND_BASE);
+          if (globalBase) {
+            remember(globalBase);
+            return globalBase;
+          }
+        }
+
+        if (typeof location !== 'undefined') {
+          if (location.port === '1313') {
+            const localBase = 'http://localhost:7777';
+            remember(localBase);
+            return localBase;
+          }
+          if (location.origin && location.origin !== 'null') {
+            const proxied = cleanup(`${location.origin}/backend`);
+            if (proxied) {
+              remember(proxied);
+              return proxied;
+            }
+          }
+        }
+
+        const fallback = 'http://localhost:7777';
+        remember(fallback);
+        return fallback;
+      }
+      const backendBase = getBackendBase();
+
+      // ディレクトリ構造を取得
+      async function fetchDirectoryStructure() {
+        try {
+          // localhost:7777のサーバーから取得
+          const response = await fetch(`${backendBase}/api/scan`);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const result = await response.json();
+          console.log('API Response:', result);
+          return result;
+        } catch (error) {
+          console.error('Error fetching directory structure:', error);
+          document.querySelector('.loading-message').textContent = 
+            'エラー: サーバーに接続できません。backend/server.js が起動していることを確認してください。';
+          return null;
+        }
+      }
+      
+      // ディレクトリ構造をグラフデータに変換
+      function convertToGraphData(directoryData) {
+        const nodes = [];
+        const links = [];
+        let nodeId = 0;
+        const stats = {
+          folders: 0,
+          files: 0,
+          images: 0,
+          videos: 0,
+          audio: 0,
+          html: 0,
+          yaml: 0,
+          json: 0,
+          code: 0,
+          text: 0,
+          doc: 0,
+          other: 0
+        };
+        
+        // ルートノードを追加
+        const rootNode = {
+          id: nodeId++,
+          name: 'ROOT',
+          type: 'root',
+          path: directoryData.baseDir,
+          group: 1
+        };
+        nodes.push(rootNode);
+        
+        // 再帰的にノードとリンクを作成
+        function processDirectory(dirData, parentId, depth = 0) {
+          // フォルダを処理
+          if (dirData.folders) {
+            dirData.folders.forEach(folder => {
+              const folderId = nodeId++;
+              const folderItems = folder.items || {};
+              const childFolders = Array.isArray(folderItems.folders) ? folderItems.folders.map(child => child.name) : [];
+              const childFiles = Array.isArray(folderItems.files) ? folderItems.files.map(child => child.name) : [];
+              nodes.push({
+                id: folderId,
+                name: folder.name,
+                type: 'folder',
+                path: folder.path,
+                group: 2,
+                depth: depth,
+                childFolders: childFolders.slice(0, 20),
+                childFiles: childFiles.slice(0, 20),
+                childFolderCount: childFolders.length,
+                childFileCount: childFiles.length
+              });
+              links.push({
+                source: parentId,
+                target: folderId
+              });
+              stats.folders++;
+              
+              // サブフォルダを再帰的に処理
+              if (folder.items) {
+                processDirectory(folder.items, folderId, depth + 1);
+              }
+            });
+          }
+          
+          // ファイルを処理
+          if (dirData.files) {
+            dirData.files.forEach(file => {
+              const fileId = nodeId++;
+              let group = 10; // デフォルト(その他)
+              // サーバー側タイプが不明な場合は拡張子から解決
+              const ext = (file.ext || (file.name.split('.').pop() || '')).toLowerCase();
+              let resolvedType = file.type;
+              if (!resolvedType || resolvedType === 'other') {
+                const isImage = ['jpg','jpeg','png','gif','webp','svg'].includes(ext);
+                const isVideo = ['mp4','mov','avi','mkv','webm'].includes(ext);
+                const isAudio = ['mp3','wav','ogg','flac','m4a'].includes(ext);
+                const isHtml  = ['html','htm'].includes(ext);
+                const isYaml  = ['yml','yaml'].includes(ext);
+                const isJson  = ['json'].includes(ext);
+                const isText  = ['txt','md','markdown','log'].includes(ext);
+                const isCode  = ['js','ts','tsx','jsx','py','rb','go','rs','java','c','cc','cpp','h','hpp','cs','php','sh','bash','zsh','fish'].includes(ext);
+                const isDoc   = ['pdf','doc','docx','ppt','pptx','xls','xlsx','csv','tsv'].includes(ext);
+                resolvedType = isImage ? 'image'
+                  : isVideo ? 'video'
+                  : isAudio ? 'audio'
+                  : isHtml  ? 'html'
+                  : isYaml  ? 'yaml'
+                  : isJson  ? 'json'
+                  : isCode  ? 'code'
+                  : isText  ? 'text'
+                  : isDoc   ? 'doc'
+                  : 'other';
+              }
+
+              switch(resolvedType) {
+                case 'image':
+                  group = 3; // 画像
+                  stats.images++;
+                  break;
+                case 'video':
+                  group = 4; // 動画
+                  stats.videos++;
+                  break;
+                case 'audio':
+                  group = 5; // 音声
+                  stats.audio++;
+                  break;
+                case 'html':
+                  group = 6; // HTML
+                  stats.html++;
+                  break;
+                case 'yaml':
+                  group = 7; // YAML
+                  stats.yaml++;
+                  break;
+                case 'json':
+                  group = 8; // JSON
+                  stats.json++;
+                  break;
+                case 'code':
+                  group = 9; // コード
+                  stats.code++;
+                  break;
+                case 'text':
+                  group = 11; // テキスト
+                  stats.text++;
+                  break;
+                case 'doc':
+                  group = 12; // ドキュメント
+                  stats.doc++;
+                  break;
+                default:
+                  stats.other++;
+              }
+              
+              nodes.push({
+                id: fileId,
+                name: file.name,
+                type: resolvedType,
+                path: file.path,
+                size: file.size,
+                group: group,
+                depth: depth,
+                ext: ext,
+                rawType: file.type || resolvedType
+              });
+              links.push({
+                source: parentId,
+                target: fileId
+              });
+              stats.files++;
+            });
+          }
+        }
+        
+        // ディレクトリ構造を処理
+        processDirectory(directoryData.data, rootNode.id);
+        
+        console.log('Graph data:', { nodes: nodes.length, links: links.length, stats });
+        return { nodes, links, stats };
+      }
+      
+      // グラフを作成
+      function createDirectoryGraph(directoryData) {
+        const container = document.getElementById('directory-graph-3d-canvas');
+        console.log('Container found:', container);
+        if (!container) {
+          console.error('Container not found');
+          return;
+        }
+        
+        // コンテナのサイズを確認
+        const rect = container.getBoundingClientRect();
+        console.log('Container size:', rect.width, 'x', rect.height);
+        
+        // ローディングメッセージを削除
+        container.innerHTML = '';
+        
+        const graphData = convertToGraphData(directoryData);
+        
+        // データが空の場合の処理
+        if (graphData.nodes.length === 0) {
+          container.innerHTML = '<div class="loading-message">データがありません</div>';
+          return;
+        }
+        
+        // 統計情報を更新（同一セクション内にスコープ）
+        const sectionRoot = container.closest('.doc-section') || document;
+        const folderEl = sectionRoot.querySelector('#folder-count');
+        const fileEl = sectionRoot.querySelector('#file-count');
+        const imageEl = sectionRoot.querySelector('#image-count');
+        const videoEl = sectionRoot.querySelector('#video-count');
+        const audioEl = sectionRoot.querySelector('#audio-count');
+        const htmlEl = sectionRoot.querySelector('#html-count');
+        const yamlEl = sectionRoot.querySelector('#yaml-count');
+        const jsonEl = sectionRoot.querySelector('#json-count');
+        const codeEl = sectionRoot.querySelector('#code-count');
+        const textEl = sectionRoot.querySelector('#text-count');
+        const docEl = sectionRoot.querySelector('#doc-count');
+        const otherEl = sectionRoot.querySelector('#other-count');
+        if (folderEl) folderEl.textContent = graphData.stats.folders;
+        if (fileEl) fileEl.textContent = graphData.stats.files;
+        if (imageEl) imageEl.textContent = graphData.stats.images;
+        if (videoEl) videoEl.textContent = graphData.stats.videos;
+        if (audioEl) audioEl.textContent = graphData.stats.audio;
+        if (htmlEl) htmlEl.textContent = graphData.stats.html;
+        if (yamlEl) yamlEl.textContent = graphData.stats.yaml;
+        if (jsonEl) jsonEl.textContent = graphData.stats.json;
+        if (codeEl) codeEl.textContent = graphData.stats.code;
+        if (textEl) textEl.textContent = graphData.stats.text;
+        if (docEl) docEl.textContent = graphData.stats.doc;
+        if (otherEl) otherEl.textContent = graphData.stats.other;
+
+        const previewNameEl = sectionRoot.querySelector('#node-preview-name');
+        const previewTypeEl = sectionRoot.querySelector('#node-preview-type');
+        const previewPathEl = sectionRoot.querySelector('#node-preview-path');
+        const previewSizeEl = sectionRoot.querySelector('#node-preview-size');
+        const previewBodyEl = sectionRoot.querySelector('#node-preview-body');
+        const infoButtons = sectionRoot ? Array.from(sectionRoot.querySelectorAll('.info-btn')) : [];
+        const infoSections = sectionRoot ? Array.from(sectionRoot.querySelectorAll('.info-section')) : [];
+        const setActiveInfoSection = (targetId) => {
+          infoButtons.forEach(btn => {
+            const isActive = btn.dataset.target === targetId;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+          });
+          infoSections.forEach(section => {
+            const isActive = section.dataset.section === targetId;
+            section.classList.toggle('active', isActive);
+            section.hidden = !isActive;
+          });
+        };
+        if (infoButtons.length && infoSections.length) {
+          infoButtons.forEach(btn => {
+            if (btn.dataset.bound === '1') return;
+            btn.dataset.bound = '1';
+            btn.addEventListener('click', (event) => {
+              event.preventDefault();
+              const target = btn.dataset.target;
+              if (target) setActiveInfoSection(target);
+            });
+          });
+          const initialTarget = infoButtons.find(btn => btn.classList.contains('active'))?.dataset.target
+            || infoButtons[0]?.dataset.target;
+          if (initialTarget) setActiveInfoSection(initialTarget);
+        }
+        const previewCache = new Map();
+        let currentPreviewKey = null;
+        let previewFetchToken = 0;
+        const MAX_PREVIEW_LENGTH = 8000;
+        const typeLabels = {
+          root: 'ルート',
+          folder: 'フォルダ',
+          image: '画像',
+          video: '動画',
+          audio: '音声',
+          html: 'HTML',
+          yaml: 'YAML',
+          json: 'JSON',
+          code: 'コード',
+          text: 'テキスト',
+          doc: 'ドキュメント',
+          other: 'その他'
+        };
+
+        const baseDirectoryPath = directoryData.baseDir || '';
+
+        function escapeHtml(str) {
+          return String(str || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] || ch));
+        }
+
+        function formatBytes(bytes) {
+          const size = Number(bytes);
+          if (!Number.isFinite(size) || size < 0) return '-';
+          if (size === 0) return '0 B';
+          const units = ['B','KB','MB','GB','TB'];
+          const idx = Math.min(units.length - 1, Math.floor(Math.log(size) / Math.log(1024)));
+          const value = size / Math.pow(1024, idx);
+          return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[idx]}`;
+        }
+
+        function setPreviewMeta(node) {
+          if (previewNameEl) previewNameEl.textContent = node?.name || '-';
+          if (previewTypeEl) previewTypeEl.textContent = typeLabels[node?.type] || (node?.type || '-');
+          const pathValue = node?.path || baseDirectoryPath || '-';
+          if (previewPathEl) previewPathEl.textContent = pathValue;
+          if (previewSizeEl) {
+            if (!node || node.type === 'root') {
+              previewSizeEl.textContent = '-';
+            } else if (node.type === 'folder') {
+              const folders = node.childFolderCount ?? 0;
+              const files = node.childFileCount ?? 0;
+              previewSizeEl.textContent = `${folders} フォルダ / ${files} ファイル`;
+            } else {
+              previewSizeEl.textContent = formatBytes(node.size);
+            }
+          }
+        }
+
+        function setPreviewContent(html) {
+          if (!previewBodyEl) return;
+          previewBodyEl.innerHTML = html;
+          previewBodyEl.scrollTop = 0;
+        }
+
+        function setPreviewPlaceholder(message) {
+          setPreviewContent(`<div class="preview-placeholder">${escapeHtml(message)}</div>`);
+        }
+
+        function renderFolderPreview(node) {
+          const folders = Array.isArray(node.childFolders) ? node.childFolders : [];
+          const files = Array.isArray(node.childFiles) ? node.childFiles : [];
+          const remainingFolders = Math.max(0, (node.childFolderCount || 0) - folders.length);
+          const remainingFiles = Math.max(0, (node.childFileCount || 0) - files.length);
+          const folderList = folders.length
+            ? `<ul>${folders.map(name => `<li>📁 ${escapeHtml(name)}</li>`).join('')}</ul>${remainingFolders ? `<div class="preview-note">他 ${remainingFolders} フォルダ...</div>` : ''}`
+            : '<div class="preview-note">サブフォルダはありません。</div>';
+          const fileList = files.length
+            ? `<ul>${files.map(name => `<li>📄 ${escapeHtml(name)}</li>`).join('')}</ul>${remainingFiles ? `<div class="preview-note">他 ${remainingFiles} ファイル...</div>` : ''}`
+            : '<div class="preview-note">ファイルはありません。</div>';
+          setPreviewContent(`
+            <div class="preview-section">
+              <div class="preview-heading">サブフォルダ</div>
+              ${folderList}
+            </div>
+            <div class="preview-section">
+              <div class="preview-heading">ファイル</div>
+              ${fileList}
+            </div>
+          `);
+        }
+
+        function renderRootPreview() {
+          setPreviewContent(`<div class="preview-placeholder">ベースディレクトリ: ${escapeHtml(baseDirectoryPath || '不明')}</div>`);
+        }
+
+        function renderImagePreview(node) {
+          const src = `${backendBase}/${encodeURI(node.path)}`;
+          setPreviewContent(`
+            <div class="preview-section">
+              <img src="${src}" alt="${escapeHtml(node.name)}" loading="lazy" />
+              <div class="preview-note">画像はバックエンド経由で取得します。</div>
+            </div>
+          `);
+        }
+
+        function renderVideoPreview(node) {
+          const src = `${backendBase}/${encodeURI(node.path)}`;
+          setPreviewContent(`
+            <div class="preview-section">
+              <video controls preload="metadata" src="${src}"></video>
+            </div>
+          `);
+        }
+
+        function renderAudioPreview(node) {
+          const src = `${backendBase}/${encodeURI(node.path)}`;
+          setPreviewContent(`
+            <div class="preview-section">
+              <audio controls preload="metadata" src="${src}"></audio>
+            </div>
+          `);
+        }
+
+        function renderUnsupported(message) {
+          setPreviewContent(`<div class="preview-placeholder">${escapeHtml(message || 'このファイル種別のプレビューには対応していません。')}</div>`);
+        }
+
+        function renderTextPreview(rawText, nodeType) {
+          const text = String(rawText || '');
+          const truncated = text.length > MAX_PREVIEW_LENGTH;
+          const display = truncated ? `${text.slice(0, MAX_PREVIEW_LENGTH)}\n…(省略)` : text;
+          const heading = nodeType === 'code'
+            ? 'コード'
+            : nodeType === 'html'
+            ? 'HTML'
+            : nodeType === 'json'
+            ? 'JSON'
+            : nodeType === 'yaml'
+            ? 'YAML'
+            : 'テキスト';
+          setPreviewContent(`
+            <div class="preview-section">
+              <div class="preview-heading">${heading}</div>
+              <pre><code>${escapeHtml(display)}</code></pre>
+              ${truncated ? '<div class="preview-note">※ 先頭のみ表示しています。</div>' : ''}
+            </div>
+          `);
+        }
+
+        async function loadTextPreview(node) {
+          const cacheKey = node.path;
+          if (previewCache.has(cacheKey)) {
+            const cached = previewCache.get(cacheKey);
+            if (cached.kind === 'text') {
+              renderTextPreview(cached.content, cached.type || node.type);
+            }
+            return;
+          }
+          const currentToken = ++previewFetchToken;
+          setPreviewPlaceholder('プレビューを読み込み中...');
+          try {
+            const res = await fetch(`${backendBase}/${encodeURI(node.path)}`, { cache: 'no-store' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            let text = await res.text();
+            if (node.type === 'json') {
+              try {
+                const parsed = JSON.parse(text);
+                text = JSON.stringify(parsed, null, 2);
+              } catch(_) {}
+            }
+            if (currentToken !== previewFetchToken) return;
+            previewCache.set(cacheKey, { kind: 'text', content: text, type: node.type });
+            renderTextPreview(text, node.type);
+          } catch (err) {
+            if (currentToken !== previewFetchToken) return;
+            console.warn('Preview fetch failed:', err);
+            renderUnsupported('プレビューの取得に失敗しました。');
+          }
+        }
+
+        function showNodePreview(node, { force = false } = {}) {
+          if (!node) return;
+          const key = `${node.type || 'unknown'}:${node.path || node.id}`;
+          if (!force && key === currentPreviewKey) return;
+          currentPreviewKey = key;
+          setPreviewMeta(node);
+          if (!node.path && node.type !== 'root') {
+            renderUnsupported('プレビュー対象のパスが取得できませんでした。');
+            return;
+          }
+          switch (node.type) {
+            case 'root':
+              renderRootPreview();
+              break;
+            case 'folder':
+              renderFolderPreview(node);
+              break;
+            case 'image':
+              renderImagePreview(node);
+              break;
+            case 'video':
+              renderVideoPreview(node);
+              break;
+            case 'audio':
+              renderAudioPreview(node);
+              break;
+            case 'html':
+            case 'yaml':
+            case 'json':
+            case 'code':
+            case 'text':
+              loadTextPreview(node);
+              break;
+            default:
+              renderUnsupported();
+          }
+        }
+
+        // カラーパレット
+        const colorPalette = {
+          1: '#ff4757', // ルート - 強い赤
+          2: '#2ed573', // フォルダ - 鮮やかなグリーン
+          3: '#ffb84d', // 画像 - 薄いオレンジ
+          4: '#6c5ce7', // 動画 - パープル
+          5: '#eccc68', // 音声 - 温かいイエロー
+          6: '#a4b0be', // HTML - グレー
+          7: '#6c5ce7', // YAML - パープル（動画と同系色だが別用途）
+          8: '#00d2d3', // JSON - ティール
+          9: '#ff6b81', // コード - ピンクレッド
+          10:'#57606f', // その他 - ダークグレー
+          11:'#70a1ff', // テキスト - ライトブルー
+          12:'#2f3542'  // ドキュメント - ダーク
+        };
+        
+        console.log('Creating graph with container:', container);
+        const Graph = ForceGraph3D()(container)
+          .backgroundColor('#000003')
+          .graphData(graphData)
+          .nodeLabel(node => `${node.name}\n${node.type === 'folder' ? 'フォルダ' : node.type}`)
+          .nodeColor(node => colorPalette[node.group] || '#ffffff')
+          .nodeOpacity(0.9)
+          .nodeResolution(16)
+          .nodeVal(node => {
+            // ノードサイズを種類に応じて設定
+            if (node.type === 'root') return 30;
+            if (node.type === 'folder') return 15;
+            if (node.type === 'video') return 10;
+            if (node.type === 'image') return 8;
+            return 6;
+          })
+          .linkOpacity(0.75)
+          .linkWidth(4)
+          .linkColor(() => 'rgba(255,255,255,0.5)')
+          .linkDirectionalParticles(2)
+          .linkDirectionalParticleWidth(3)
+          .linkDirectionalParticleSpeed(0.01)
+          .enableNodeDrag(true)
+          .enableNavigationControls(true)
+          .showNavInfo(false)
+          .d3VelocityDecay(0.3)
+          .d3AlphaDecay(0.02)
+          .dagMode(null);
+        // 個別適用（エラー回避）
+        try {
+          Graph.d3Force('charge').strength(-300);
+          Graph.d3Force('link').distance(80);
+        } catch (e) {
+          console.warn('d3Force setup skipped:', e);
+        }
+        const finalizedGraph = Graph
+          .warmupTicks(100)
+          .cooldownTicks(0)
+          .onNodeClick(node => {
+            if (!node) return;
+            console.log('Node clicked:', node);
+            showNodePreview(node, { force: true });
+            // ノードにフォーカス
+            const distance = 40;
+            const distRatio = 1 + distance/Math.hypot(node.x, node.y, node.z);
+            Graph.cameraPosition(
+              { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+              node,
+              3000
+            );
+          })
+          .onNodeHover(node => {
+            container.style.cursor = node ? 'pointer' : null;
+            if (node) showNodePreview(node);
+          })
+          .onNodeDragEnd(node => {
+            node.fx = node.x;
+            node.fy = node.y;
+            node.fz = node.z;
+          });
+
+        // WebXR AR 対応（ARButton読み込み待ちにも対応）
+        try {
+          const renderer = Graph.renderer && Graph.renderer();
+          const scene = Graph.scene && Graph.scene();
+          const mountEl = (sectionRoot && sectionRoot.querySelector && sectionRoot.querySelector('.view-toggle')) || container;
+          function trySetupAR(times = 20) {
+            try {
+              if (!renderer || !scene) return; // Graph未初期化
+              const ARLib = window.ARButton || (window.THREE && window.THREE.ARButton);
+              if (!navigator.xr || !ARLib) {
+                if (times > 0) setTimeout(() => trySetupAR(times - 1), 300);
+                return;
+              }
+              renderer.xr.enabled = true;
+              try { renderer.xr.setReferenceSpaceType && renderer.xr.setReferenceSpaceType('local'); } catch(_){ }
+              // 透明背景で実写合成
+              try { renderer.setClearAlpha(0); renderer.domElement.style.background = 'transparent'; } catch(_) {}
+              const arBtn = ARLib.createButton(renderer, { requiredFeatures: ['local'], optionalFeatures: ['hit-test'] });
+              arBtn.style.marginLeft = 'auto';
+              if (mountEl && !mountEl.querySelector('.ar-button')) {
+                // threeのARButtonはclassName='ar-button'を持つ
+                mountEl.appendChild(arBtn);
+              }
+              let arGroup = null;
+              renderer.xr.addEventListener('sessionstart', () => {
+                try {
+                  if (!arGroup) {
+                    arGroup = new THREE.Group();
+                    arGroup.name = 'graphArGroup';
+                    const toMove = scene.children.filter(obj => !obj.isLight);
+                    toMove.forEach(obj => { scene.remove(obj); arGroup.add(obj); });
+                    scene.add(arGroup);
+                  }
+                  // 自動スケール・配置
+                  arGroup.updateMatrixWorld(true);
+                  const box = new THREE.Box3().setFromObject(arGroup);
+                  const size = new THREE.Vector3(); box.getSize(size);
+                  const center = new THREE.Vector3(); box.getCenter(center);
+                  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+                  const target = 1.2; // 約1.2mに収める
+                  const s = target / maxDim;
+                  arGroup.scale.setScalar(s);
+                  arGroup.position.sub(center);
+                  arGroup.position.z -= 1.5;
+                  arGroup.position.y -= 0.2;
+                  // XR描画ループ
+                  const cam = (Graph.camera && Graph.camera()) || null;
+                  if (renderer.setAnimationLoop && cam) {
+                    renderer.setAnimationLoop(() => {
+                      try { renderer.render(scene, cam); } catch(_) {}
+                    });
+                  }
+                } catch(e) { console.warn('AR group setup failed:', e); }
+              });
+              renderer.xr.addEventListener('sessionend', () => {
+                try {
+                  if (arGroup) {
+                    const toMoveBack = [...arGroup.children];
+                    toMoveBack.forEach(obj => { arGroup.remove(obj); scene.add(obj); });
+                    scene.remove(arGroup);
+                    arGroup = null;
+                  }
+                  if (renderer.setAnimationLoop) renderer.setAnimationLoop(null);
+                } catch(e) { console.warn('AR teardown failed:', e); }
+              });
+            } catch(e) { console.warn('AR setup error:', e); }
+          }
+          trySetupAR();
+
+          // フォールバック: ARButton未読込でも独自ARボタンを表示
+          async function ensureCustomARButton() {
+            try {
+              if (!renderer || !scene || !navigator.xr) return;
+              if (mountEl.querySelector('.ar-button')) return; // 既にARボタンあり
+              const supported = await navigator.xr.isSessionSupported('immersive-ar');
+              if (!supported) return;
+              const btn = document.createElement('button');
+              btn.textContent = 'Enter AR';
+              btn.className = 'toggle-btn ar-button';
+              btn.style.marginLeft = 'auto';
+              btn.addEventListener('click', async () => {
+                try {
+                  renderer.xr.enabled = true;
+                  const session = await navigator.xr.requestSession('immersive-ar', {
+                    requiredFeatures: ['local-floor']
+                  });
+                  await renderer.xr.setSession(session);
+                } catch(err) { console.warn('XR session failed:', err); }
+              });
+              mountEl.appendChild(btn);
+            } catch(err) { console.warn('ensureCustomARButton failed:', err); }
+          }
+          setTimeout(ensureCustomARButton, 1200);
+        } catch(e) { console.warn('AR setup skipped:', e); }
+        
+        // 軽量なグロー: ノードサイズを上げて代替的に「光らせる」表現
+        // Threeの多重ロード回避のためpostprocessingは使わず視覚的に強調
+        
+        // ダブルクリックでリセット
+        container.addEventListener('dblclick', () => {
+          Graph.cameraPosition({ x: 0, y: 0, z: 500 }, { x: 0, y: 0, z: 0 }, 1000);
+        });
+        
+        // キーボードショートカット（このグラフがフォーカスされている場合のみ）
+        let keyHandler = (event) => {
+          // コンテナまたはその子要素がフォーカスされているかチェック
+          if (!container.contains(document.activeElement) && document.activeElement !== document.body) {
+            return;
+          }
+          
+          if (event.key === 'r' || event.key === 'R') {
+            // Rキーで再配置
+            Graph.d3ReheatSimulation();
+          } else if (event.key === 'c' || event.key === 'C') {
+            // Cキーでカメラリセット
+            Graph.cameraPosition({ x: 0, y: 0, z: 500 }, { x: 0, y: 0, z: 0 }, 1000);
+          } else if (event.key === 'f' || event.key === 'F') {
+            // Fキーでフィット
+            Graph.zoomToFit(1000, 100);
+          }
+        };
+        
+        // コンテナをクリックしたときにキーボードイベントを有効化
+        container.addEventListener('click', () => {
+          container.tabIndex = -1;
+          container.focus();
+        });
+        
+        document.addEventListener('keydown', keyHandler);
+        
+        // 初期カメラ位置を設定（より遠くから全体を見渡せるように）
+        Graph.cameraPosition({ x: 0, y: 0, z: 1000 });
+        
+        // 初期表示時に全体をフィット
+        setTimeout(() => {
+          console.log('Graph created, checking container:', container.getBoundingClientRect());
+          console.log('Graph scene:', Graph.scene());
+          console.log('Graph camera:', Graph.camera());
+          Graph.zoomToFit(1000, 100);
+        }, 500);
+        
+        // グラフ作成完了ログ
+        console.log('Directory graph creation completed');
+        
+        // 定期的にコンテナの状態をチェック（デバッグ用）
+        setTimeout(() => {
+          const rect = container.getBoundingClientRect();
+          console.log('Container after 2s:', rect.width, 'x', rect.height);
+          console.log('Container display:', window.getComputedStyle(container).display);
+          console.log('Container visibility:', window.getComputedStyle(container).visibility);
+          console.log('Container children:', container.children.length);
+          console.log('Canvas found:', container.querySelector('canvas'));
+        }, 2000);
+        // 表示モード切り替え
+        const colorBtn = document.getElementById('toggle-color-mode');
+        const mediaBtn = document.getElementById('toggle-media-mode');
+        let showMediaTexture = true;
+        const applyActive = () => {
+          if (colorBtn) colorBtn.classList.toggle('active', !showMediaTexture);
+          if (mediaBtn) mediaBtn.classList.toggle('active', showMediaTexture);
+        };
+        
+        // 画像/動画ノードにテクスチャ適用
+        const loader = new Image();
+        const getVideoThumbUrl = (path) => `${backendBase}/${encodeURI(path)}`; // ひとまず同URLを使用（将来サムネAPIに）
+        
+        const textureCache = new Map();
+        function setMediaTextures(enabled) {
+          showMediaTexture = enabled;
+          applyActive();
+          Graph.nodeThreeObject(node => {
+            if (!enabled) return undefined; // デフォルト描画
+            if (node.type !== 'image' && node.type !== 'video') return undefined;
+            const key = `${node.type}:${node.path}`;
+            if (!textureCache.has(key)) {
+              const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffffff }));
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              img.onload = () => {
+                const tex = new THREE.Texture(img);
+                tex.needsUpdate = true;
+                sprite.material.map = tex;
+                sprite.material.needsUpdate = true;
+              };
+              img.src = node.type === 'image' ? `${backendBase}/${encodeURI(node.path)}` : getVideoThumbUrl(node.path);
+              sprite.scale.set(16, 12, 1);
+              textureCache.set(key, sprite);
+            }
+            return textureCache.get(key);
+          });
+          // 再描画
+          Graph.refresh();
+        }
+        if (showMediaTexture) {
+          setMediaTextures(true);
+        } else {
+          applyActive();
+        }
+        mediaBtn?.addEventListener('click', () => setMediaTextures(true));
+        colorBtn?.addEventListener('click', () => setMediaTextures(false));
+      }
+      
+      // 初期化開始（ページ読み込み完了後）
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDirectoryGraph);
+      } else {
+        // 既に読み込み完了している場合
+        setTimeout(initDirectoryGraph, 100);
+      }
+    </script>

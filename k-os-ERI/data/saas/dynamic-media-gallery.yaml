@@ -1,0 +1,36 @@
+- id: dynamic-media-gallery
+  category: 1
+  category_name: ダッシュボード
+  title: Dynamic Media Gallery
+  content: ""
+  custom_html: |
+    <div class="dynamic-media-embed" style="background: #0f0f0f; border-radius: 12px; overflow: hidden; margin: 20px 0; position: relative; height: clamp(560px, 80vh, 1000px); width: 100%; max-width: 100%;">
+      <!-- ギャラリー埋め込み -->
+      <iframe
+        src="/data/media-gallery/index.html"
+        style="width: 100%; height: 100%; border: none; display: block; position: absolute; top: 0; left: 0;"
+        frameborder="0">
+      </iframe>
+    </div>
+    <style>
+      /* Ensure the embed never causes horizontal overflow */
+      #dynamic-media-gallery .dynamic-media-embed { max-width: 100%; width: 100%; overflow: hidden; }
+      #dynamic-media-gallery .dynamic-media-embed iframe { width: 100%; height: 100%; display: block; }
+      @media (min-width: 1024px) {
+        #dynamic-media-gallery .dynamic-media-embed { height: clamp(640px, 85vh, 1100px); }
+      }
+      @media (max-width: 768px) {
+        #dynamic-media-gallery .dynamic-media-embed {
+          margin: 10px 0 !important;
+          height: 82vh !important;
+          min-height: 360px !important;
+        }
+      }
+      @media (max-width: 480px) {
+        #dynamic-media-gallery .dynamic-media-embed {
+          margin: 5px 0 !important;
+          height: 85vh !important;
+          min-height: 320px !important;
+        }
+      }
+    </style>

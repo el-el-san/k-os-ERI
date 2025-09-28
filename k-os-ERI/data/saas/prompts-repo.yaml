@@ -1,0 +1,222 @@
+# サブエージェント
+- id: prompts-repo
+  category: 6
+  category_name: エージェント
+  title: エージェント
+  content: ""
+  yaml_files:
+    - data/saas/employees_hiring-agent.yaml
+    - data/saas/employees_designer-agent.yaml
+    - data/saas/employees_requirements-docs-agent.yaml
+    - data/saas/employees_private-saas-developer.yaml
+  custom_html: |
+    <style>
+      .prompt-md { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+      .prompt-md pre, .prompt-md code { background: var(--code-bg); border: 1px solid var(--code-border); }
+      /* カード切替UI */
+      .prompt-cards-wrap { margin-bottom: 16px; }
+      .prompt-viewer { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+      .card-grid .card.active { border-color: var(--link); box-shadow: 0 0 0 1px color-mix(in srgb, var(--link) 30%, transparent); }
+      .card .card-desc { color: var(--text-weak); font-size: .9rem; margin-top: 4px; }
+      /* ダークテーマで読めるよう強制カラー */
+      .prompt-cards-wrap .card { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+      .prompt-cards-wrap .card-title { color: var(--text); font-weight: 800; }
+      .prompt-cards-wrap .card:hover { border-color: var(--link); }
+      .prompt-cards-wrap .card-img, .prompt-cards-wrap .card-video { width: 100%; height: auto; display: block; margin-top: 8px; border-radius: 8px; background: var(--media-bg); border: 1px solid var(--border); }
+      .prompt-cards-wrap .card-name { position: absolute; right: 10px; bottom: 10px; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(17, 24, 39, .7); color: #e5e7eb; border: 1px solid rgba(148, 163, 184, .4); }
+      .prompt-cards-wrap .card { position: relative; }
+    </style>
+    <div class="prompt-cards-wrap">
+      <style>
+        /* 横一列のスライダー行（カード） */
+        .row-nav { display:flex; justify-content:flex-end; gap:8px; margin: 4px 0 8px; }
+        .row-btn { background: rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color: var(--text); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+        .row-btn:hover { background: rgba(255,255,255,0.12); }
+        #promptCardGrid { display:flex; gap: 12px; overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom: 8px; }
+        #promptCardGrid .card { min-width: 320px; scroll-snap-align: start; }
+        /* 横一列のスライダー行（タスク） */
+        #teamDash { display:flex; gap: 12px; overflow-x:auto; scroll-snap-type:x mandatory; margin-bottom: 10px; }
+        .task-card { background: var(--card); border:1px solid var(--border); border-radius:12px; padding:12px; min-width: 280px; scroll-snap-align: start; }
+        .task-card h4 { margin: 0 0 8px; font-size: 0.98rem; }
+        .task { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; margin:4px 0; background: var(--sidebar-bg); border: 1px solid var(--border); }
+        .task .status { width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; border-radius:4px; border:1px solid var(--border); font-size:12px; }
+        .task.done .status { background:#10b98133; border-color:#10b98166; color:#10b981; }
+        .task.doing .status { background:#f59e0b22; border-color:#f59e0b66; color:#f59e0b; }
+        .task.todo .status { background:transparent; color:var(--text-weak); }
+        .task .name { flex:1; color:var(--text); }
+        .task small { color:var(--text-weak); }
+        /* スクロールバー調整（横のみ） */
+        #promptCardGrid::-webkit-scrollbar, #teamDash::-webkit-scrollbar { height: 8px; }
+      </style>
+      <div class="row-nav"><button class="row-btn" id="cardPrev">‹</button><button class="row-btn" id="cardNext">›</button></div>
+      <div class="card-grid" id="promptCardGrid"></div>
+      <div class="row-nav"><button class="row-btn" id="teamPrev">‹</button><button class="row-btn" id="teamNext">›</button></div>
+      <div class="team-dash" id="teamDash"></div>
+    </div>
+    <div class="prompt-viewer" id="promptDocViewer"></div>
+    <script>
+      (function(){
+        const sec = document.getElementById('prompts-repo');
+        const grid = sec.querySelector('#promptCardGrid');
+        const teamDash = sec.querySelector('#teamDash');
+        const cardPrev = sec.querySelector('#cardPrev');
+        const cardNext = sec.querySelector('#cardNext');
+        const teamPrev = sec.querySelector('#teamPrev');
+        const teamNext = sec.querySelector('#teamNext');
+        const viewer = sec.querySelector('#promptDocViewer');
+        if (!grid || !viewer) return;
+        function attachRowNav(container, prevBtn, nextBtn){
+          const step = () => Math.round(container.clientWidth * 0.9);
+          prevBtn?.addEventListener('click', () => { container.scrollBy({ left: -step(), behavior: 'smooth' }); });
+          nextBtn?.addEventListener('click', () => { container.scrollBy({ left: step(), behavior: 'smooth' }); });
+          // ホイール横スクロール
+          container.addEventListener('wheel', (e) => { if (Math.abs(e.deltaX) < Math.abs(e.deltaY)) { container.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive:false });
+        }
+        // 簡易チームダッシュボード（カードの下に表示）
+        if (teamDash) {
+          const team = [
+            { name: 'タクミ', role: 'テンプレ/JS', tasks: [
+              { title: 'TOC 折りたたみ実装', status: 'done' },
+              { title: 'カード4枚化', status: 'done' },
+              { title: '直リンク時の初期化', status: 'doing' }
+            ]},
+            { name: 'ミナ', role: 'アセット/動画', tasks: [
+              { title: 'エージェント動画差替', status: 'done' },
+              { title: 'SNSカード素材', status: 'todo' },
+              { title: 'OG画像更新', status: 'todo' }
+            ]},
+            { name: 'トム', role: '採用担当', tasks: [
+              { title: '求人担当の詳細仕様決定完了', status: 'done' },
+              { title: 'KAMUI CODE 実装担当採用', status: 'todo' },
+              { title: 'KAMUI 実装担当採用', status: 'todo' }
+            ]},
+            { name: 'サラ', role: 'デザイナー', tasks: [
+              { title: 'UIコンポーネント整理', status: 'doing' },
+              { title: 'ガラス調モーダル調整', status: 'todo' },
+              { title: '2列グリッドのレスポンシブ最適化', status: 'todo' }
+            ]},
+            { name: 'エミリー', role: '要件定義執筆', tasks: [
+              { title: 'KAMUI OS 要件定義書 執筆', status: 'doing' },
+              { title: 'KAMUI OS NPM 要件定義書 執筆', status: 'doing' },
+              { title: 'SNSマーケダッシュボード 要件定義書 執筆', status: 'doing' }
+            ]},
+            { name: 'ケンジ', role: 'プライベートSaaS開発', tasks: [
+              { title: '認証システム設計', status: 'done' },
+              { title: 'JWT認証実装', status: 'doing' },
+              { title: 'ロールベースアクセス制御', status: 'todo' },
+              { title: 'API暗号化対応', status: 'todo' }
+            ]}
+          ];
+          const icon = (s)=> s==='done'?'✅':(s==='doing'?'🟧':'⬜️');
+          team.forEach(member => {
+            const box = document.createElement('div');
+            box.className = 'task-card';
+            box.innerHTML = `<h4>${member.name} <small style="color:var(--text-weak);">${member.role}</small></h4>`;
+            member.tasks.forEach(t => {
+              const row = document.createElement('div');
+              row.className = `task ${t.status}`;
+              row.innerHTML = `<span class="status">${icon(t.status)}</span><div class="name">${t.title}</div>`;
+              box.appendChild(row);
+            });
+            teamDash.appendChild(box);
+          });
+          attachRowNav(teamDash, teamPrev, teamNext);
+        }
+        const docs = Array.from(sec.querySelectorAll('.markdown-body'));
+        if (!docs.length) return;
+        let items = docs.map((el, i) => {
+          const title = (el.querySelector('h1,h2')?.textContent || `ドキュメント ${i+1}`).trim();
+          const id = `prompt-doc-${i}`;
+          const path = el.getAttribute('data-path') || '';
+          el.dataset.docId = id;
+          return { id, title, path, el };
+        });
+        // 並び順: 拓海, ミナ, 採用担当, デザイナー, プライベートSaaS開発者, エミリー（エミリーを右端に）
+        const order = ['create-new-page.v2.md','media-assets-guidelines.md','hiring-agent.md','designer-agent.md','private-saas-developer.md','requirements-docs-agent.md'];
+        items.sort((a,b)=>{
+          const aIdx = order.findIndex(k => (a.path||'').endsWith(k));
+          const bIdx = order.findIndex(k => (b.path||'').endsWith(k));
+          return (aIdx<0?99:aIdx) - (bIdx<0?99:bIdx);
+        });
+        // タイトル補正（h1/h2 が見つからない場合の保険）
+        const nameMap = new Map([
+          ['create-new-page.v2.md','新規ページ追加（外部YAML基準）'],
+          ['media-assets-guidelines.md','画像/動画アセットの置き場所と参照ルール'],
+          ['designer-agent.md','デザイナー（UI/ビジュアル）'],
+          ['hiring-agent.md','採用担当（Recruiter）'],
+          ['private-saas-developer.md','プライベートSaaS開発者'],
+          ['requirements-docs-agent.md','要件定義執筆担当（KAMUI OS / KAMUI CODE）']
+        ]);
+        items.forEach(it => {
+          if (!it.title || /^ドキュメント\s*\d+/.test(it.title)) {
+            const key = (it.path||'').split('/').pop();
+            const alt = nameMap.get(key);
+            if (alt) it.title = alt;
+          }
+        });
+        // ビューア初期化
+        function showDoc(id){
+          viewer.innerHTML = '';
+          items.forEach(it => {
+            const card = grid.querySelector(`[data-id="${it.id}"]`);
+            card?.classList.toggle('active', it.id === id);
+          });
+          const target = items.find(it => it.id === id);
+          if (target){ viewer.appendChild(target.el); target.el.style.display = 'block'; }
+        }
+        // カード生成
+        items.forEach((it, idx) => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.setAttribute('data-id', it.id);
+          let img = '';
+          if (/media-assets-guidelines\.md$/.test(it.path||'')) {
+            img = '<video class="card-video" src="/images/agent-female-hero-video.mp4" autoplay loop muted playsinline></video>'+
+                  '<span class="card-name">ミナ</span>';
+          }
+          if (/create-new-page\.v2\.md$/.test(it.path||'')) {
+            img = '<video class="card-video" src="/images/agent-male-hero-video.mp4" autoplay loop muted playsinline></video>'+
+                  '<span class="card-name">拓海</span>';
+          }
+          if (/requirements-docs-agent\.md$/.test(it.path||'')) {
+            img = '<video class="card-video" src="/videos/agent_card_video_square.mp4" autoplay loop muted playsinline></video>'+
+                  '<span class="card-name">エミリー</span>';
+          }
+          if (/hiring-agent\.md$/.test(it.path||'')) {
+            img = '<video class="card-video" src="/videos/recruiter_1_video.mp4" poster="/images/agent_card.png" autoplay loop muted playsinline></video>'+
+                  '<span class="card-name">サラ</span>';
+          }
+          if (/designer-agent\.md$/.test(it.path||'')) {
+            img = '<video class="card-video" src="/videos/designer_card_video_square.mp4" poster="/images/agent_card.png" autoplay loop muted playsinline></video>'+
+                  '<span class="card-name">サラ</span>';
+          }
+          if (/private-saas-developer\.md$/.test(it.path||'')) {
+            img = '<video class="card-video" src="/videos/private_dev_card_video_square.mp4" poster="/images/private_dev_card.png" autoplay loop muted playsinline></video>'+
+                  '<span class="card-name">ケンジ</span>';
+          }
+          card.innerHTML = `<div class="card-title">${it.title}</div>${img}`;
+          card.addEventListener('click', () => showDoc(it.id));
+          // 右クリックで相対パスをクリップボードへコピー
+          card.addEventListener('contextmenu', async (e) => {
+            e.preventDefault();
+            const p = it.path || '';
+            if (!p) return;
+            try {
+              await navigator.clipboard.writeText(p);
+              const t = card.querySelector('.card-title');
+              const org = t.textContent;
+              t.textContent = '✅ パスをコピーしました';
+              setTimeout(()=>{ t.textContent = org; }, 1200);
+            } catch(err) {
+              console.error('Copy failed', err);
+            }
+          });
+          grid.appendChild(card);
+          // いったん隠しておく（選択時にviewerへ移動）
+          it.el.style.display = 'none';
+        });
+        attachRowNav(grid, cardPrev, cardNext);
+        // 先頭を表示
+        showDoc(items[0].id);
+      })();
+    </script>

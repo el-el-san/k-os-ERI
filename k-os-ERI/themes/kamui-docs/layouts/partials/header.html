@@ -1,0 +1,37 @@
+<div class="header-bar">
+  <button class="menu-btn icon-btn" id="toggleSidebar">
+    <span class="btn-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </span>
+  </button>
+  
+  <input type="text" class="search-bar" id="searchInput" placeholder="検索..." />
+
+  <div class="header-actions">
+    <button id="backToDashboard"
+            class="header-action action-back"
+            aria-label="ダッシュボードに戻る"
+            onclick="window.location.hash=''; location.reload();">
+      <span class="action-icon" aria-hidden="true">←</span>
+      <span class="action-label">ダッシュボードに戻る</span>
+    </button>
+
+    <button id="forceReloadBtn"
+            class="header-action action-reload"
+            aria-label="強制リロード">
+      <span class="action-icon" aria-hidden="true">🔄</span>
+      <span class="action-label">強制リロード</span>
+    </button>
+
+    <button id="devToolsBtn"
+            class="header-action action-devtools"
+            aria-label="DevTools を開く">
+      <span class="action-icon" aria-hidden="true">🛠</span>
+      <span class="action-label">DevTools</span>
+    </button>
+  </div>
+</div>

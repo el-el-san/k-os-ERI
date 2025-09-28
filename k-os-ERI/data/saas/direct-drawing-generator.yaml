@@ -1,0 +1,3495 @@
+# Direct Drawing Generator アプリケーション設計書
+# 1-1. Direct Drawing Generator
+
+- id: saas-direct-drawing
+  category: 3
+  category_name: メディアエディタ
+  title: 3-4 Direct Drawing Generator
+  content: ""
+  custom_html: |
+    <div style="margin-bottom: 20px;">
+      <button onclick="window.location.hash=''; location.reload();" style="padding: 8px 16px; background: #4a4a4a; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 14px;">
+        ← SaaS一覧に戻る
+      </button>
+    </div>
+
+    <!-- MCPクライアントライブラリの読み込み -->
+    <script src="/js/mcp-client.js?v=post-only"></script>
+    <script src="/js/gallery-manager.js?v=0.1.0"></script>
+        <style>
+        .direct-drawing-interface {
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 0;
+            margin: 20px 0;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+
+        .app-container {
+            display: flex;
+            height: clamp(780px, 92vh, 1600px); /* 全体高さを拡張 */
+            background: #1a1a1a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            overflow: hidden; /* 全体の横スクロールは抑制 */
+        }
+
+        /* Left Sidebar - Reference Gallery & MCP Config */
+        .reference-panel {
+            width: 320px;
+            background: #2d2d2d;
+            padding: 0;
+            overflow-y: auto;
+            border-right: 1px solid #3a3a3a;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* タブ切り替え */
+        .panel-tabs {
+            display: flex;
+            background: #1a1a1a;
+            border-bottom: 1px solid #3a3a3a;
+            position: sticky; /* モバイルで常に上に表示 */
+            top: 0;
+            z-index: 2; /* 上位に配置して他要素の被りを防止 */
+        }
+
+        .panel-tab {
+            flex: 1;
+            padding: 12px 16px;
+            background: #1a1a1a;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 13px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .panel-tab.active {
+            color: #4a9eff;
+            border-bottom-color: #4a9eff;
+            background: #2d2d2d;
+        }
+
+        .panel-tab:hover {
+            color: #ccc;
+            background: #333;
+        }
+
+        .panel-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* MCP設定UI */
+        .mcp-config {
+            margin-bottom: 20px;
+        }
+
+        .config-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #1a1a1a;
+            border-radius: 8px;
+        }
+
+        .config-section h4 {
+            margin: 0 0 10px 0;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .config-input {
+            width: 100%;
+            padding: 8px 12px;
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .config-input:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+
+        .server-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: #333;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+
+        .server-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+        }
+
+        .server-status.connected {
+            background: #4CAF50;
+        }
+
+        .server-status.error {
+            background: #f44336;
+        }
+
+        /* 画像生成UI */
+        .generation-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #1a1a1a;
+            border-radius: 8px;
+        }
+
+        .generation-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .prompt-input {
+            min-height: 120px; /* 約2倍に拡張 */
+            resize: vertical;
+        }
+
+        .generation-params {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .generate-btn {
+            padding: 12px 20px;
+            background: linear-gradient(45deg, #4a9eff, #00d4aa);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 10px;
+        }
+
+        .generate-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+        }
+
+        .generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff33;
+            border-top: 2px solid #ffffff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        /* 生成結果表示 */
+        .generation-results {
+            margin-top: 20px;
+        }
+
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        .result-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .result-item:hover {
+            transform: scale(1.05);
+        }
+
+        .result-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .result-actions {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            display: flex;
+            gap: 4px;
+        }
+
+        .result-action-btn {
+            width: 24px;
+            height: 24px;
+            background: rgba(0,0,0,0.7);
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .reference-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .reference-title {
+            font-size: 22px;
+            font-weight: bold;
+            margin: 0;
+            color: #ffffff;
+        }
+
+        .reload-btn {
+            background: #3a3a3a;
+            border: 1px solid #505050;
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #e0e0e0;
+            font-size: 16px;
+        }
+
+        .reload-btn:hover {
+            background: #4a4a4a;
+            border-color: #606060;
+        }
+
+        .reload-btn:active {
+            transform: scale(0.95);
+        }
+
+        .reload-btn.loading .reload-icon {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Context menu styles */
+        .context-menu {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            transition: opacity 0.2s;
+        }
+
+        .context-menu:hover {
+            background: #3a3a3a !important;
+        }
+
+        .reference-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 25px;
+            max-height: 800px; /* ギャラリー表示の縦幅を拡張 */
+            overflow-y: auto;
+        }
+
+        .reference-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 6px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+            background: #666;
+        }
+
+        .reference-item:hover {
+            border-color: #4a9eff;
+            transform: scale(1.02);
+        }
+
+        .reference-item.selected {
+            border-color: #4a9eff;
+            box-shadow: 0 0 15px rgba(74, 158, 255, 0.3);
+        }
+
+        /* 除外表示 */
+        .reference-item.excluded::after {
+            content: 'EXCLUDED';
+            position: absolute;
+            top: 6px; left: 6px;
+            font-size: 10px;
+            padding: 2px 6px;
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            border-radius: 4px;
+        }
+        .reference-item.excluded img { filter: grayscale(1) opacity(0.4); }
+
+        .reference-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .reference-item .checkmark {
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            width: 18px;
+            height: 18px;
+            background: #4a9eff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .reference-item.selected .checkmark {
+            opacity: 1;
+        }
+
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #1a1a1a;
+            position: relative;
+            overflow-y: auto; /* 縦スクロール許可 */
+        }
+
+        /* Header */
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            background: #2d2d2d;
+            border-bottom: 1px solid #3a3a3a;
+            order: 1;
+        }
+
+        .header-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .icon-button {
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            background: #3a3a3a;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            transition: all 0.2s ease;
+        }
+
+        .icon-button:hover {
+            background: #4a4a4a;
+            transform: translateY(-1px);
+        }
+        /* Gallery modal */
+        .gallery-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; align-items: center; justify-content: center; z-index: 10000; }
+        .gallery-modal.open { display: flex; }
+        .gallery-frame { width: min(1200px, 96vw); height: min(800px, 88vh); background: #111; border: 1px solid #333; border-radius: 12px; overflow: hidden; position: relative; }
+        .gallery-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+        .gallery-close { position: absolute; top: 8px; right: 8px; background: #2d2d2d; border: 1px solid #444; color: #fff; border-radius: 6px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+
+        .notification-badge {
+            position: relative;
+        }
+
+        .notification-badge::after {
+            content: '1';
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 16px;
+            height: 16px;
+            background: #ff4757;
+            border-radius: 50%;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        /* Before/After Comparison */
+        .generation-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            order: 3;
+        }
+
+        .before-after-comparison {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+        }
+
+
+        .comparison-label {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 15px;
+        }
+
+        .comparison-image {
+            width: clamp(280px, 32vw, 420px);
+            height: auto;
+            aspect-ratio: 1 / 1;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            background: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .before-item .comparison-image {
+            background: #f0f0f0;
+        }
+
+        .after-item .comparison-image {
+            background: #333;
+        }
+
+        .placeholder-sketch {
+            color: #666;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .placeholder-result {
+            color: #999;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .comparison-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 60px;
+            height: 60px;
+            background: #4a4a4a;
+            border-radius: 50%;
+        }
+
+        .arrow-large {
+            width: 0;
+            height: 0;
+            border-left: 15px solid #ffffff;
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+        }
+
+        /* Drawing and Controls */
+        .drawing-controls {
+            order: 2; /* ヘッダーの直下に配置 */
+            position: relative;
+            right: auto;
+            top: auto;
+            display: block;
+            padding: 12px 20px;
+            background: #232323;
+            border-bottom: 1px solid #3a3a3a;
+        }
+
+        .control-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+            gap: 10px;
+        }
+
+        .control-btn {
+            padding: 8px 12px;
+            border-radius: 6px;
+            background: #3a3a3a;
+            border: none;
+            cursor: pointer;
+            color: #ffffff;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            min-height: 36px;
+            width: 100%;
+        }
+
+        .control-btn:hover {
+            background: #4a4a4a;
+            transform: translateY(-1px);
+        }
+
+        .control-btn.active {
+            background: #4a9eff;
+            color: #101010;
+            font-weight: 600;
+        }
+
+        .control-settings {
+            margin-top: 14px;
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            align-items: center;
+        }
+
+        .control-setting {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 12px;
+            color: #ccc;
+        }
+
+        .control-setting input[type="color"] {
+            width: 44px;
+            height: 32px;
+            padding: 0;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        .control-setting input[type="range"] {
+            width: 100%;
+        }
+
+        .text-controls {
+            margin-top: 12px;
+            display: grid;
+            gap: 10px;
+            grid-template-columns: minmax(0, 1fr) 180px 130px;
+            align-items: center;
+        }
+
+        .text-controls input[type="text"] {
+            padding: 8px 10px;
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .text-controls input[type="text"]:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+
+        .text-size-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 12px;
+            color: #ccc;
+        }
+
+        .text-size-wrap input[type="range"] {
+            width: 100%;
+        }
+
+        .comparison-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        #drawingCanvas {
+            display: none;
+            border: 2px solid #4a9eff;
+            border-radius: 12px;
+            width: 100%;
+            height: 100%;
+            touch-action: none; /* スマホでの描画に必要 */
+        }
+
+        /* ===== レスポンシブ対応 ===== */
+        @media (max-width: 1200px) {
+            .reference-panel { width: 240px; }
+            .before-after-comparison { gap: 24px; }
+        }
+
+        @media (max-width: 900px) {
+            .comparison-image { width: clamp(240px, 42vw, 360px); }
+        }
+
+        @media (max-width: 768px) {
+            .app-container {
+                flex-direction: column;
+                height: auto;
+                min-height: 92vh; /* モバイルでも表示高を確保 */
+            }
+            .reference-panel {
+                width: 100%;
+                max-height: 420px; /* 左パネルの縦幅を拡張 */
+                border-right: none;
+                border-bottom: 1px solid #3a3a3a;
+                overflow-y: auto;
+            }
+            .reference-grid {
+                grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+                max-height: 360px; /* モバイルのギャラリー高さも拡張 */
+            }
+            .before-after-comparison { flex-direction: column; gap: 16px; }
+            .comparison-image { width: min(92vw, 420px); }
+            .drawing-controls { padding: 10px 12px; }
+        .control-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .text-controls { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
+    }
+
+        @media (max-width: 420px) {
+            .header-title { font-size: 20px; }
+            .icon-button { width: 32px; height: 32px; }
+            .control-btn { font-size: 11px; padding: 6px 10px; }
+        }
+        </style>
+
+    <div class="direct-drawing-interface">
+        <div class="app-container">
+            <!-- Left Sidebar - Reference Gallery & MCP Config -->
+            <div class="reference-panel">
+                <!-- タブ切り替え -->
+                <div class="panel-tabs" role="tablist" aria-label="Direct Drawing Tabs">
+                    <button type="button" class="panel-tab active" data-tab="reference" role="tab" aria-selected="true" onclick="switchLeftTab('reference', event)">Media Gallery</button>
+                    <button type="button" class="panel-tab" data-tab="mcp-config" role="tab" aria-selected="false" onclick="switchLeftTab('mcp-config', event)">MCP設定</button>
+                    <button type="button" class="panel-tab" data-tab="generation" role="tab" aria-selected="false" onclick="switchLeftTab('generation', event)">Generate</button>
+                </div>
+
+                <!-- パネルコンテンツ -->
+                <div class="panel-content">
+                    <!-- Reference Tab -->
+                    <div id="reference-tab" class="tab-content active">
+                        <div class="reference-header">
+                            <h2 class="reference-title">Media Gallery</h2>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                              <button class="reload-btn" id="openEmbeddedGallery" title="ギャラリーから選択"><span class="reload-icon">🖼️</span></button>
+                              <button class="reload-btn" onclick="window.open('/#dynamic-media-gallery', '_blank')" title="ギャラリーを新しいタブで開く">
+                                <span class="reload-icon">🗗</span>
+                              </button>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:6px; align-items:center; margin:8px 0 12px 0; flex-wrap: wrap;">
+                          <input id="externalImageUrl" class="config-input" placeholder="外部画像URL（改行/カンマ区切りで複数可）" style="margin:0; min-width:260px;">
+                          <button class="control-btn" id="applyExternalImage" style="white-space:nowrap;">Beforeに適用</button>
+                          <button class="control-btn" id="addUrlsToReference" style="white-space:nowrap;">URLを参照へ追加</button>
+                          <input type="file" id="externalFiles" accept="image/*" multiple style="display:none;">
+                          <button class="control-btn" id="addFilesToReference" style="white-space:nowrap;">ファイル追加</button>
+                        </div>
+                        <div style="text-align: center; padding: 20px;">
+                            <p style="color: #ccc; margin-bottom: 15px;">メディアギャラリーから画像を選択</p>
+                            <button onclick="window.open('/#dynamic-media-gallery', '_blank')"
+                                    style="padding: 12px 24px; background: linear-gradient(45deg, #4a9eff, #00d4aa); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; transition: transform 0.2s;">
+                                📂 Dynamic Media Gallery を開く
+                            </button>
+                        </div>
+                        <div class="reference-grid" id="referenceGrid">
+                            <!-- Images will be loaded dynamically -->
+                        </div>
+                        <!-- 入力対象トレイ -->
+                        <div id="inputTargetBar" style="margin-top:12px; border:1px solid #333; border-radius:8px; padding:8px; background:#1e1e1e;">
+                          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                            <strong style="color:#ddd;">Input Targets</strong>
+                            <label style="display:flex; align-items:center; gap:6px; color:#bbb;">
+                              <input type="checkbox" id="toggleUseAll" checked>
+                              全件投入（参照にある全画像を使用）
+                            </label>
+                            <div style="margin-left:auto; display:flex; gap:6px;">
+                              <button class="control-btn" id="registerBeforeToInput" style="white-space:nowrap;" title="Before画像をInput Targetに追加">🎯 Input登録</button>
+                              <button class="control-btn" id="selectAllRef" title="参照内を全選択">全選択</button>
+                              <button class="control-btn" id="clearSelectedRef" title="参照内の選択を解除">全解除</button>
+                              <button class="control-btn" id="resetExclusions" title="除外をすべて解除">除外リセット</button>
+                            </div>
+                          </div>
+                          <div id="inputTray" style="display:flex; gap:6px; flex-wrap:wrap; min-height:40px;"></div>
+                          <div id="inputTrayInfo" style="color:#9aa; font-size:12px; margin-top:6px;">対象: 0件</div>
+                        </div>
+                    </div>
+
+                    <!-- MCP Config Tab -->
+                    <div id="mcp-config-tab" class="tab-content">
+                        <div class="mcp-config">
+                            <div class="config-section">
+                                <h4>新しいMCPサーバーを追加</h4>
+                                <input type="text" class="config-input" id="serverName" placeholder="サーバー名">
+                                <input type="text" class="config-input" id="serverUrl" placeholder="サーバーURL">
+                                <input type="text" class="config-input" id="serverAuth" placeholder="認証 (Bearer token)">
+                                <button class="control-btn" id="addServer">サーバー追加</button>
+                            </div>
+
+                            <div class="config-section">
+                                <h4>登録済みサーバー</h4>
+                                <div id="serverList">
+                                    <!-- Servers will be listed here -->
+                                </div>
+                            </div>
+
+                            <!-- デバッグエリア -->
+                            <div class="config-section">
+                                <h4>🐛 デバッグ情報</h4>
+                                <div style="display:flex; gap:6px; margin-bottom:6px; align-items:center;">
+                                  <button id="mcpDebugCopy" class="control-btn" style="padding:6px 10px;">コピー</button>
+                                  <button id="mcpDebugClear" class="control-btn" style="padding:6px 10px;">クリア</button>
+                                </div>
+                                <div id="debugOutput" style="background: #0d1117; color: #c9d1d9; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 11px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; border: 1px solid #333;">
+                                    デバッグ情報がここに表示されます...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Generation Tab -->
+                    <div id="generation-tab" class="tab-content">
+                        <div class="generation-section">
+                            <h4>画像編集</h4>
+                            <div class="generation-controls">
+                                <textarea class="config-input prompt-input" id="promptInput" placeholder="編集したい内容（例: 色味を暖色に、肌をなめらかに、背景を夕景に など）"></textarea>
+
+                        <button class="generate-btn" id="nanoBtn" style="background: linear-gradient(45deg, #a855f7, #00d4aa);">
+                            <span id="nanoBtnText">Nano Banana Edit</span>
+                        </button>
+                        <button class="generate-btn" id="seedBtn" style="background: linear-gradient(45deg, #4a9eff, #00d4aa);">
+                            <span id="seedBtnText">Seedream Edit</span>
+                        </button>
+                        <details id="nanoDebugBox" style="margin-top:10px;">
+                          <summary style="cursor:pointer;color:#ccc;">デバッグログ</summary>
+                          <div style="display:flex;gap:6px;margin:6px 0;align-items:center;">
+                            <button id="nanoLogCopy" class="control-btn" style="padding:6px 10px;">コピー</button>
+                            <button id="nanoLogClear" class="control-btn" style="padding:6px 10px;">クリア</button>
+                            <label style="font-size:12px;color:#aaa;display:flex;gap:6px;align-items:center;">
+                              <input type="checkbox" id="nanoLogAutoscroll" checked>
+                              オートスクロール
+                            </label>
+                          </div>
+                          <pre id="nanoDebugLog" style="background:#0c0c0c;border:1px solid #2a2a2a;color:#bdbdbd;padding:10px;border-radius:8px;max-height:440px;overflow:auto;white-space:pre-wrap;word-break:break-word;"></pre>
+                        </details>
+                    </div>
+                </div>
+
+                        <div class="generation-results">
+                            <h4>生成結果</h4>
+                            <div class="result-grid" id="resultGrid">
+                                <!-- Generated images will appear here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="main-content">
+                <!-- Header -->
+                <div class="app-header">
+                    <h1 class="header-title">AI Generation</h1>
+                    <div class="header-controls">
+                        <button class="icon-button">🔍</button>
+                        <button class="icon-button">💾</button>
+                        <button class="icon-button notification-badge">🛒</button>
+                    </div>
+                </div>
+
+                <!-- Before/After Comparison Area -->
+                <div class="generation-area">
+                    <div class="before-after-comparison">
+                        <div class="comparison-item before-item">
+                            <div class="comparison-label">Before</div>
+                            <div class="comparison-image" id="beforeImage">
+                                <img src="" alt="Before" style="width:100%;height:100%;object-fit:cover;">
+                                <canvas id="drawingCanvas" width="300" height="300" style="position: absolute; top: 0; left: 0; cursor: crosshair; z-index: 10; display: none; border-radius: 12px;"></canvas>
+                            </div>
+                        </div>
+                        <div class="comparison-arrow">
+                            <div class="arrow-large"></div>
+                        </div>
+                        <div class="comparison-item after-item">
+                            <div class="comparison-label">After</div>
+                            <div class="comparison-image" id="afterImage"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Drawing and Controls -->
+                <div class="drawing-controls">
+                    <div class="control-buttons">
+                        <button class="control-btn" id="clearCanvas">🗑️ Clear</button>
+                        <button class="control-btn" id="switchImages">⇄ Switch</button>
+                        <button class="control-btn" id="toggleDraw">✏️ Draw</button>
+                        <button class="control-btn" id="toggleEraser">🧽 Eraser</button>
+                        <button class="control-btn" id="saveDrawing">💾 Save</button>
+                    </div>
+                    <div class="control-settings">
+                        <label class="control-setting">
+                            <span>ペンカラー</span>
+                            <input type="color" id="penColor" value="#ff0000">
+                        </label>
+                        <label class="control-setting">
+                            <span>ペンサイズ <span id="penSizeLabel">3 px</span></span>
+                            <input type="range" id="penSize" min="1" max="50" value="3">
+                        </label>
+                        <label class="control-setting">
+                            <span>消しゴムサイズ <span id="eraserSizeLabel">40 px</span></span>
+                            <input type="range" id="eraserSize" min="8" max="160" value="40">
+                        </label>
+                    </div>
+                    <div class="text-controls">
+                        <input type="text" id="textInput" placeholder="テキストを入力...">
+                        <div class="text-size-wrap">
+                            <span>文字サイズ <span id="textSizeLabel">24 px</span></span>
+                            <input type="range" id="textSize" min="8" max="128" value="24">
+                        </div>
+                        <button class="control-btn" id="placeTextBtn">🅣 テキスト配置</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        if (typeof window.switchLeftTab !== 'function') {
+            window.switchLeftTab = function(){ console.warn('switchLeftTab not ready yet'); };
+        }
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let allImages = []; // Will be populated from JSON file
+            const appRoot = document.getElementById('saas-direct-drawing');
+            const rootDoc = appRoot || document;
+            const cssEscape = (typeof CSS !== 'undefined' && CSS.escape)
+              ? CSS.escape.bind(CSS)
+              : (value => String(value).replace(/[^a-zA-Z0-9_\-]/g, ch => '\\' + ch));
+            const qs = selector => rootDoc.querySelector(selector);
+            const qsa = selector => rootDoc.querySelectorAll(selector);
+            const byId = id => {
+                if (!id) return null;
+                if (appRoot) {
+                    try {
+                        return appRoot.querySelector('#' + cssEscape(id));
+                    } catch (_) {
+                        return appRoot.querySelector(`[id="${String(id).replace(/"/g, '\\"')}"]`);
+                    }
+                }
+                return document.getElementById(id);
+            };
+
+            // ===== MCP機能とタブ切り替え =====
+            let mcpConfigManager;
+            let currentMcpClient = null;
+
+            // シンプルなJSONモーダル（コピー可）
+            (function ensureJsonModal(){
+                if (window.openJsonModal) return;
+                const modal = document.createElement('div');
+                modal.id = 'jsonModal';
+                modal.style.cssText = 'position:fixed;inset:0;display:none;background:rgba(0,0,0,0.6);z-index:9999;';
+                modal.innerHTML = `
+                  <div style="max-width:840px;width:94%;margin:5vh auto;background:#1e1e1e;border:1px solid #3a3a3a;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #333;">
+                      <div id="jsonModalTitle" style="font-weight:600;color:#fff;font-size:14px;">Debug</div>
+                      <div>
+                        <button id="jsonCopyBtn" style="margin-right:6px;padding:6px 10px;border:1px solid #3a3a3a;background:#2a2a2a;color:#fff;border-radius:6px;cursor:pointer;">コピー</button>
+                        <button id="jsonCloseBtn" style="padding:6px 10px;border:1px solid #3a3a3a;background:#2a2a2a;color:#fff;border-radius:6px;cursor:pointer;">閉じる</button>
+                      </div>
+                    </div>
+                    <pre id="jsonModalBody" style="margin:0;padding:12px;max-height:90vh;overflow:auto;color:#ddd;white-space:pre-wrap;word-break:break-all;"></pre>
+                  </div>`;
+                document.body.appendChild(modal);
+                const bodyEl = modal.querySelector('#jsonModalBody');
+                const titleEl = modal.querySelector('#jsonModalTitle');
+                modal.querySelector('#jsonCloseBtn').addEventListener('click', ()=> modal.style.display='none');
+                modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.style.display='none';});
+                modal.querySelector('#jsonCopyBtn').addEventListener('click', async ()=>{
+                  try { await navigator.clipboard.writeText(bodyEl.textContent||''); alert('コピーしました'); } catch(e){
+                    const t = document.createElement('textarea'); t.value = bodyEl.textContent||''; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); alert('コピーしました');
+                  }
+                });
+                window.openJsonModal = function(text, title){
+                  titleEl.textContent = title || 'Debug';
+                  bodyEl.textContent = text;
+                  modal.style.display = 'block';
+                };
+            })();
+
+            // 既定オプション（必要に応じてページコンソールから上書き可）
+            if (typeof window.__max_input_images__ === 'undefined') window.__max_input_images__ = 10; // 入力画像の最大枚数
+            if (typeof window.__use_all_reference_images__ === 'undefined') window.__use_all_reference_images__ = true; // 参照タブに表示された画像を全て入力に使用
+            if (typeof window.__placeholder_size__ === 'undefined') window.__placeholder_size__ = 1024; // 白プレースホルダの一辺px
+            if (typeof window.__default_placeholder_count__ === 'undefined') window.__default_placeholder_count__ = 1; // 必要なら複数枚
+            if (!window.__input_exclude_set__) window.__input_exclude_set__ = new Set(); // use_all時の除外リスト
+            if (!window.__input_manual_set__) window.__input_manual_set__ = new Set(); // 手動で追加した入力対象
+
+            // デフォルトのBefore/Afterを白一色(1024x1024)に初期化
+            (function ensureWhitePlaceholders(){
+              try {
+                function makeWhite(size){
+                  size = Number(size)||1024; const c=document.createElement('canvas'); c.width=size; c.height=size; const ctx=c.getContext('2d');
+                  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,size,size); return c.toDataURL('image/png');
+                }
+                const whiteUrl = makeWhite(window.__placeholder_size__);
+                const before = byId('beforeImage');
+                if (before){
+                  before.innerHTML = `<img src="${whiteUrl}" alt="Before (white 1024)" style="width:100%;height:100%;object-fit:cover;">` + before.innerHTML.replace(/^[\s\S]*?<canvas /,'<canvas ');
+                }
+                const after = byId('afterImage');
+                if (after){ after.innerHTML = `<img src="${whiteUrl}" alt="After (white 1024)" style="width:100%;height:100%;object-fit:cover;">`; }
+              } catch(_){ /* no-op */ }
+            })();
+
+            // タブ切り替え（AI Portrait / Direct Drawing 共通）
+            if (!window.__kamuiUnifiedSwitchLeftTab__) {
+                window.__kamuiUnifiedSwitchLeftTab__ = true;
+                window.switchLeftTab = function(name, ev){
+                    try {
+                        var root = null;
+                        if (ev && ev.target && ev.target.closest) {
+                            root = ev.target.closest('#saas-ai-portrait, #saas-direct-drawing, .reference-panel, .ai-portrait-interface, .direct-drawing-interface');
+                            if (root && !root.id && root.closest) {
+                                root = root.closest('#saas-ai-portrait, #saas-direct-drawing');
+                            }
+                        }
+
+                        var tabSelector = '#' + name + '-tab';
+                        var portraitRoot = document.getElementById('saas-ai-portrait');
+                        var directRoot = document.getElementById('saas-direct-drawing');
+
+                        if (!root) {
+                            if (directRoot && directRoot.querySelector && directRoot.querySelector(tabSelector)) {
+                                root = directRoot;
+                            } else if (portraitRoot && portraitRoot.querySelector && portraitRoot.querySelector(tabSelector)) {
+                                root = portraitRoot;
+                            }
+                        }
+
+                        if (!root) {
+                            var activeHash = (location.hash || '').split('&')[0];
+                            if (activeHash === '#saas-direct-drawing' && directRoot) {
+                                root = directRoot;
+                            } else if (activeHash === '#saas-ai-portrait' && portraitRoot) {
+                                root = portraitRoot;
+                            } else {
+                                root = portraitRoot || directRoot || document;
+                            }
+                        }
+
+                        var isDirect = root && root.id === 'saas-direct-drawing';
+                        var base = isDirect ? '#saas-direct-drawing' : '#saas-ai-portrait';
+
+                        var tabs = (root && root.querySelectorAll) ? root.querySelectorAll('.panel-tab') : [];
+                        for (var i=0;i<tabs.length;i++) {
+                            tabs[i].classList.remove('active');
+                            tabs[i].setAttribute('aria-selected','false');
+                        }
+
+                        var contents = (root && root.querySelectorAll) ? root.querySelectorAll('.tab-content') : [];
+                        for (var j=0;j<contents.length;j++) {
+                            contents[j].classList.remove('active');
+                            contents[j].style.display = 'none';
+                        }
+
+                        var btn = (root && root.querySelector) ? root.querySelector('.panel-tab[data-tab="'+name+'"]') : null;
+                        if (btn) {
+                            btn.classList.add('active');
+                            btn.setAttribute('aria-selected','true');
+                        }
+
+                        var target = (root && root.querySelector) ? root.querySelector(tabSelector) : null;
+                        if (target) {
+                            target.classList.add('active');
+                            target.style.display = 'block';
+                        }
+
+                        var h = String(location.hash||'');
+                        var extra = (name && name !== 'reference') ? ('&tab=' + name) : '';
+                        if (base && h.startsWith(base)) {
+                            var newHash = base + extra;
+                            if (h !== newHash) {
+                                history.replaceState({ app: isDirect ? 'direct-drawing' : 'ai-portrait', tab: name }, '', newHash);
+                            }
+                        }
+                    } catch(e) {
+                        console.warn('switchLeftTab failed', e);
+                    }
+                };
+            }
+
+            // 既存イベントリスナーも残す（新規/既存どちらでも動く）
+            (function initTabClicks(){
+                var tabs = qsa('.panel-tab');
+                for (var i=0;i<tabs.length;i++){
+                    tabs[i].addEventListener('click', function(e){
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var targetTab = this.getAttribute('data-tab');
+                        if (targetTab) window.switchLeftTab(targetTab, e);
+                    }, { passive: false });
+                }
+            })();
+
+            // 参照グリッドにアイテムを追加
+
+            function addToReferenceGrid(urls, selectAll = true){
+
+              try {
+
+                const grid = byId('referenceGrid');
+
+                if (!grid) return 0;
+
+                const existing = new Set(Array.from(grid.querySelectorAll('img')).map(img => toAbsoluteUrl((img && img.src) || '')));
+
+                let added = 0;
+
+                urls.forEach((u)=>{
+
+                  if (!u) return;
+
+                  const abs = toAbsoluteUrl(u);
+
+                  if (!abs || existing.has(abs)) return;
+
+                  existing.add(abs);
+
+                  const displaySrc = (/^data:/i.test(u) || /^blob:/i.test(u) || /^https?:\/\//i.test(u)) ? u : abs;
+
+                  const div = document.createElement('div');
+
+                  div.className = 'reference-item' + (selectAll ? ' selected' : '');
+
+                  const alt = 'User image';
+
+                  div.innerHTML = `<img src="${displaySrc}" alt="${alt}"><div class="checkmark">✓</div>`;
+
+                  div.addEventListener('click', function(e){
+
+                    e.preventDefault();
+
+                    this.classList.toggle('selected');
+
+                    const img = this.querySelector('img');
+
+                    const beforeImg = qs('#beforeImage img');
+
+                    if (img && beforeImg) { beforeImg.src = img.src; beforeImg.alt = img.alt||'reference'; }
+
+                    this.classList.remove('excluded');
+
+                    const absSel = toAbsoluteUrl((this.querySelector('img')||{}).src||'');
+
+                    if (absSel && window.__input_exclude_set__) window.__input_exclude_set__.delete(absSel);
+
+                    updateInputTray();
+
+                  });
+
+                  div.addEventListener('contextmenu', function(e){ e.preventDefault(); alert((this.querySelector('img')||{}).src||''); });
+
+                  grid.prepend(div);
+
+                  added++;
+
+                });
+
+                if (added) { try { updateInputTray(); } catch(_){ } }
+
+                return added;
+
+              } catch(_) { return 0; }
+
+            }            // 入力対象UI操作
+            (function initInputTrayControls(){
+              const useAll = byId('toggleUseAll');
+              if (useAll) {
+                useAll.addEventListener('change', () => {
+                  window.__use_all_reference_images__ = !!useAll.checked;
+                  updateInputTray();
+                });
+              }
+              const selectAllBtn = byId('selectAllRef');
+              const clearSelBtn = byId('clearSelectedRef');
+              const resetEx = byId('resetExclusions');
+              const registerBeforeBtn = byId('registerBeforeToInput');
+              if (selectAllBtn) selectAllBtn.addEventListener('click', () => {
+                qsa('#referenceGrid .reference-item').forEach(el => el.classList.add('selected'));
+                updateInputTray();
+              });
+              if (clearSelBtn) clearSelBtn.addEventListener('click', () => {
+                qsa('#referenceGrid .reference-item').forEach(el => el.classList.remove('selected'));
+                updateInputTray();
+              });
+              if (resetEx) resetEx.addEventListener('click', () => {
+                if (window.__input_exclude_set__) window.__input_exclude_set__.clear();
+                qsa('#referenceGrid .reference-item.excluded').forEach(el => el.classList.remove('excluded'));
+                updateInputTray();
+              });
+              if (registerBeforeBtn) registerBeforeBtn.addEventListener('click', () => {
+                try {
+                  const beforeImg = qs('#beforeImage img');
+                  if (!beforeImg || !beforeImg.src) {
+                    alert('Before画像が設定されていません');
+                    return;
+                  }
+                  const abs = toAbsoluteUrl(beforeImg.src);
+                  if (!abs) {
+                    alert('Before画像のURLを取得できませんでした');
+                    return;
+                  }
+                  if (!(window.__input_manual_set__ instanceof Set)) {
+                    window.__input_manual_set__ = new Set();
+                  }
+                  if (window.__input_manual_set__.has(abs)) {
+                    alert('Before画像は既にInput Targetに登録済みです');
+                    return;
+                  }
+                  window.__input_manual_set__.add(abs);
+                  updateInputTray();
+                  try { nanoLog('🎯 Input TargetにBeforeを登録: ' + abs); } catch(_) {}
+                } catch (err) {
+                  console.error('registerBeforeToInput failed', err);
+                  alert('Input Targetへの登録に失敗しました: ' + (err && err.message ? err.message : err));
+                }
+              });
+            })();
+
+            // 外部画像URLをBefore/参照に反映
+            (function initExternalUrl(){
+              try {
+                var btn = byId('applyExternalImage');
+                var inp = byId('externalImageUrl');
+                var addUrlsBtn = byId('addUrlsToReference');
+                var filesBtn = byId('addFilesToReference');
+                var filesInput = byId('externalFiles');
+                if (!btn || !inp) return;
+
+                function parseUrls(raw){
+                  const parts = String(raw||'').split(/[\n,\s]+/).map(s=>s.trim()).filter(Boolean);
+                  return parts.filter(u=>/^https?:\/\//i.test(u));
+                }
+                btn.addEventListener('click', function(){
+                  var raw = (inp.value||'').trim();
+                  if (!raw) { alert('画像URLを入力してください'); return; }
+                  const urls = parseUrls(raw);
+                  if (!urls.length) { alert('https:// から始まる画像URLを入力してください'); return; }
+                  var url = urls[0];
+                  var before = qs('#beforeImage img');
+                  if (!before) { alert('Before画像エリアが見つかりません'); return; }
+                  before.src = url; before.alt = 'External image';
+                  if (urls.length > 1) {
+                    addToReferenceGrid(urls.slice(1), true);
+                    alert('Beforeを更新し、残りを参照へ追加しました');
+                  } else {
+                    alert('Before画像を更新しました');
+                  }
+                });
+
+                if (addUrlsBtn) {
+                  addUrlsBtn.addEventListener('click', function(){
+                    const urls = parseUrls(inp.value||'');
+                    if (!urls.length) { alert('追加するURLを入力してください'); return; }
+                    const added = addToReferenceGrid(urls, true);
+                    alert(added + '件を参照へ追加しました');
+                  });
+                }
+
+                if (filesBtn && filesInput) {
+                  filesBtn.addEventListener('click', function(){ filesInput.click(); });
+                  filesInput.addEventListener('change', function(){
+                    const files = Array.from(filesInput.files||[]).slice(0, (window.__max_input_images__||10));
+                    if (!files.length) return;
+                    const readers = files.map(f => new Promise((resolve)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.readAsDataURL(f); }));
+                    Promise.all(readers).then((urls)=>{
+                      const added = addToReferenceGrid(urls, true);
+                      alert(added + '件のファイルを参照へ追加しました');
+                      filesInput.value = '';
+                    });
+                  });
+                }
+              } catch(err){ console.warn('external url init failed', err); }
+            })();
+
+            // ヘルパー: 安全にイベントを張る
+            function onById(id, type, handler, opts){
+                try {
+                    var el = byId(id);
+                    if (el && el.addEventListener) { el.addEventListener(type, handler, opts||false); }
+                    else { console.warn('[direct-drawing] element not found:', id); }
+                } catch(err){ console.warn('[direct-drawing] onById failed', id, err); }
+            }
+
+            // MCP設定のデバッグログ: コピーボタン/クリアボタン
+            onById('mcpDebugCopy', 'click', async function(){
+                try {
+                    var box = byId('debugOutput');
+                    var text = (box && (box.textContent || box.innerText)) || '';
+                    await navigator.clipboard.writeText(text);
+                    this.textContent = 'コピー済み';
+                    var self = this; setTimeout(function(){ self.textContent = 'コピー'; }, 1500);
+                } catch(e) {
+                    alert('コピーに失敗しました');
+                }
+            });
+            onById('mcpDebugClear', 'click', function(){
+                try {
+                    var box = byId('debugOutput');
+                    if (box) box.innerHTML = 'クリアしました。';
+                } catch(_){}
+            });
+
+            // ハッシュからタブ同期（例: #saas-direct-drawing&tab=mcp-config）
+            function parseTabFromHash(){
+                var h = String(location.hash||'');
+                if (!h.startsWith('#saas-direct-drawing')) return null;
+                var m = h.match(/[&|?]tab=([a-zA-Z0-9_-]+)/);
+                return (m && m[1]) ? m[1] : null;
+            }
+            (function initTabFromHash(){
+                var tab = parseTabFromHash();
+                if (tab) { window.switchLeftTab(tab); }
+            })();
+            window.addEventListener('hashchange', function(){
+                var tab = parseTabFromHash();
+                if (tab) { window.switchLeftTab(tab); }
+            });
+
+            // 埋め込みメディアギャラリー（選択モード）
+            (function setupEmbeddedGallery(){
+                const modal = document.createElement('div');
+                modal.className = 'gallery-modal';
+                modal.id = 'galleryModal';
+                modal.innerHTML = `
+                  <div class="gallery-frame">
+                    <button class="gallery-close" id="closeGallery">✕</button>
+                    <iframe src="/data/media-gallery/index.html?select=1" title="media-gallery"></iframe>
+                  </div>`;
+                document.body.appendChild(modal);
+                const openBtn = byId('openEmbeddedGallery');
+                const closeBtn = modal.querySelector('#closeGallery');
+
+                const openGallery = () => {
+                  if (!window.KamuiGalleryManager) {
+                    alert('GalleryManager is not available.');
+                    return;
+                  }
+                  const handleSelection = (data) => {
+                    const candidates = [data.url, data.path].filter(Boolean);
+                    const beforeImg = qs('#beforeImage img');
+                    const trySet = (idx = 0) => {
+                      if (!beforeImg || idx >= candidates.length) {
+                        modal.classList.remove('open');
+                        window.KamuiGalleryManager.clearOwner();
+                        const diag = { received: data, tried: candidates };
+                        if (window.openJsonModal) window.openJsonModal(JSON.stringify(diag, null, 2), 'ギャラリー選択エラー（コピー可）');
+                        return;
+                      }
+                      const src = candidates[idx];
+                      const tester = new Image();
+                      tester.onload = () => {
+                        beforeImg.src = src;
+                        beforeImg.alt = data.name || 'Selected';
+                        try { addToReferenceGrid([src], true); } catch (_) {}
+                        try { updateInputTray(); } catch (_) {}
+                        modal.classList.remove('open');
+                        window.KamuiGalleryManager.clearOwner();
+                      };
+                      tester.onerror = () => trySet(idx + 1);
+                      tester.src = src;
+                    };
+                    trySet(0);
+                  };
+
+                  window.KamuiGalleryManager.setOwner('direct-drawing', handleSelection);
+                  modal.classList.add('open');
+                };
+
+                const closeGallery = () => {
+                  modal.classList.remove('open');
+                  if (window.KamuiGalleryManager) {
+                    window.KamuiGalleryManager.clearOwner();
+                  }
+                };
+
+                if (openBtn) openBtn.addEventListener('click', openGallery);
+                if (closeBtn) closeBtn.addEventListener('click', closeGallery);
+            })();
+
+            // MCP設定管理
+            async function initializeMcpConfig() {
+                // McpConfigManagerの読み込み待機
+                if (typeof McpConfigManager === 'undefined') {
+                    debugLog('⏳ McpConfigManagerの読み込み待機中...');
+                    let retries = 0;
+                    while (typeof McpConfigManager === 'undefined' && retries < 50) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        retries++;
+                    }
+                    if (typeof McpConfigManager === 'undefined') {
+                        debugLog('❌ McpConfigManagerの読み込みに失敗しました');
+                        alert('MCP設定管理クラスの読み込みに失敗しました。ページを再読み込みしてください。');
+                        return;
+                    }
+                }
+
+                try {
+                    mcpConfigManager = new McpConfigManager();
+                    await mcpConfigManager.loadDefaultConfig();
+                    updateServerList();
+
+                    // デバッグ：グローバル関数の確認
+                    debugLog('🚀 アプリ初期化完了');
+                    debugLog('グローバル関数チェック:', {
+                        McpConfigManager: typeof McpConfigManager,
+                        HttpMcpClient: typeof HttpMcpClient,
+                        testMcpConnection: typeof window.testMcpConnection,
+                        listMcpTools: typeof window.listMcpTools,
+                        removeMcpServer: typeof window.removeMcpServer
+                    });
+                } catch (error) {
+                    debugLog('❌ MCP初期化エラー:', error.message);
+                    console.error('MCP initialization failed:', error);
+                }
+            }
+
+            // ===== Nano Banana (MCP) Edit 統合 =====
+            const nanoBtn = byId('nanoBtn');
+            const seedBtn = byId('seedBtn');
+            if (nanoBtn) {
+              nanoBtn.addEventListener('click', async function() {
+                const nanoText = byId('nanoBtnText');
+                const prompt = ((byId('promptInput')||{}).value || '').trim();
+                if (!prompt) { alert('編集内容のプロンプトを入力してください'); return; }
+
+                // 入力画像を収集（複数対応）
+                let inputUrls = collectRegisteredImageUrls();
+                if (!inputUrls.length) { alert('入力画像が見つかりません'); return; }
+                logShortList('入力候補', inputUrls, 10);
+                // まとめてアップロード
+                try {
+                  nanoLog('画像をアップロード中...' );
+                  const uploaded = await uploadMany(inputUrls);
+                  if (!uploaded.length) { alert('画像のアップロードに失敗しました'); return; }
+                  inputUrls = uploaded;
+                  nanoLog('アップロード完了 (' + inputUrls.length + '件)');
+                } catch(exposeErr){ nanoLog('アップロードエラー: ' + String((exposeErr && exposeErr.message) || exposeErr)); return; }
+
+                // ログUI準備
+                ensureNanoLog(); nanoLog('\u23F1 実行開始');
+                nanoLog('プロンプト: ' + prompt);
+                logShortList('Input URLs', inputUrls, 10);
+
+                // 対象MCPサーバーを検索
+                const servers = mcpConfigManager.getServers();
+                const entries = Object.entries(servers||{});
+                const found = entries.find(([_, cfg]) => (cfg.url||'').includes('nano-banana/edit'))
+                           || entries.find(([_, cfg]) => (cfg.url||'').includes('/i2i/fal/nano-banana'))
+                           || entries.find(([_, cfg]) => (cfg.url||'').includes('/t2i/fal/nano-banana'))
+                           || entries[0];
+                if (!found) {
+                  alert('MCPサーバーが未設定です。MCP設定タブで nano-banana/edit を追加してください。');
+                  nanoLog('\u26A0 MCPサーバー未設定');
+                  return;
+                }
+                const [serverName, serverConfig] = found;
+                nanoLog('使用サーバー: ' + serverName + ' → ' + ((serverConfig && serverConfig.url)||''));
+
+                let client;
+                try {
+                  nanoBtn.disabled = true;
+                  nanoText.innerHTML = '<div class="loading-spinner"></div> 送信中...';
+
+                  // REST(T2I) 経路: /t2i/fal/nano-banana が指定された場合はJSON-RPCではなく直接POST
+                  const isT2I = /\/t2i\/fal\/nano-banana/i.test(serverConfig.url||'');
+                  if (isT2I) {
+                    let endpoint = serverConfig.url;
+                  const kamuiCodeUrl = window.KAMUI_CODE_URL;
+                  const kamuiCodeRegex = new RegExp(`^https?://${kamuiCodeUrl}/`, 'i');
+                  if (kamuiCodeRegex.test(endpoint)) {
+                    endpoint = `http://localhost:3001/kamui/${endpoint.replace(kamuiCodeRegex, '')}`;
+                    }
+                    if (/^http:\/\/localhost:3001\/mcp\//i.test(endpoint)) {
+                      endpoint = endpoint.replace('/mcp/', '/kamui/');
+                    }
+                    const headers = { 'Content-Type':'application/json', 'Accept':'application/json' };
+                    if (serverConfig && serverConfig.authorization) headers['Authorization'] = serverConfig.authorization;
+                    try {
+                      // REST側がセッション必須の場合に備え、対応する /mcp 側で session を確立
+                      const mcpEp = endpoint.replace('/kamui/', '/mcp/');
+                      const tmp = new HttpMcpClient(mcpEp, { authorization: serverConfig.authorization, clientName: 'kamui-web-client', clientVersion: '1.0.0' });
+                      await tmp.initialize();
+                      if (tmp.sessionId) headers['mcp-session-id'] = tmp.sessionId;
+                      nanoLog('t2i 用セッション確立: ' + (tmp.sessionId||'(none)'));
+                    } catch(_){ nanoLog('t2i セッション確立失敗（継続）'); }
+                    const body = { prompt, num_images: 1 };
+                    nanoLog('REST t2i submit → ' + endpoint);
+                    const resp = await fetch(endpoint, { method:'POST', headers, body: JSON.stringify(body) });
+                    const text = await resp.text();
+                    nanoLog('REST t2i 応答: ' + text.slice(0, 800));
+                    let obj = null; try { obj = JSON.parse(text); } catch(_){ obj = null; }
+                    const url = extractAnyUrl(obj) || extractAnyUrl(text) || null;
+                    if (url) {
+                      addGeneratedImage(url, prompt);
+                      setAfterImage(url);
+                      nanoLog('\u2705 生成成功: ' + url);
+                    } else {
+                      nanoLog('\u26A0 応答にURLが見つかりません');
+                      alert('Nano Banana (t2i) の応答に画像URLが見つかりません。ログを確認してください。');
+                    }
+                    nanoText.textContent = 'Nano Banana Edit';
+                    return;
+                  }
+
+                  // プロキシ経由URLに自動変換
+                  let mcpUrl = serverConfig.url;
+                  const kamuiCodeUrl = window.KAMUI_CODE_URL;
+                  const kamuiCodeRegex = new RegExp(`^https?://${kamuiCodeUrl}/`, 'i');
+                  if (kamuiCodeRegex.test(mcpUrl)) {
+                    // 上流URLを/mcpプレフィックス付きのローカルプロキシに変換
+                    const pathPart = mcpUrl.replace(kamuiCodeRegex, '');
+                    mcpUrl = 'http://localhost:3001/mcp/' + pathPart;
+                    nanoLog('プロキシ経由URL変換: ' + mcpUrl);
+                  }
+
+                  client = new HttpMcpClient(mcpUrl, {
+                    authorization: serverConfig.authorization,
+                    clientName: 'kamui-web-client',
+                    clientVersion: '1.0.0'
+                  });
+                  window.currentMcpClient = client;
+
+                  nanoLog('initialize 開始: ' + mcpUrl);
+                  await client.initialize();
+                  nanoLog('initialize 完了, sessionId=' + (client.sessionId||'(none)'));
+
+                  // ツール自動検出と入力スキーマに合わせた引数生成
+                  let submitTool = 'nano_banana_edit_submit';
+                  let statusTool = 'nano_banana_edit_status';
+                  let resultTool = 'nano_banana_edit_result';
+                  try {
+                    const listed = await client.listTools();
+                    const toolsArr = (listed && listed.result && listed.result.tools) || listed.tools || [];
+                    const names = toolsArr.map(t=>String(t.name||''));
+                    nanoLog('tools: ' + JSON.stringify(names));
+                    const pick = {
+                      submit(names){
+                        // 優先: 'submit' を含む
+                        let c = names.find(n=>/submit/i.test(n));
+                        if (c) return c;
+                        // 次: 'create|start|enqueue|queue|run|begin|process' を含み、かつ status/result/get を含まない
+                        c = names.find(n=>/(create|start|enqueue|queue|run|begin|process|edit)/i.test(n) && !/(status|result|get)/i.test(n));
+                        return c || null;
+                      },
+                      status(names){
+                        return names.find(n=>/(status|poll)/i.test(n)) || null;
+                      },
+                      result(names){
+                        return names.find(n=>/(result|get)/i.test(n)) || null;
+                      }
+                    };
+                    submitTool = pick.submit(names) || submitTool;
+                    statusTool = pick.status(names) || statusTool;
+                    resultTool = pick.result(names) || resultTool;
+                    window.__nano_status_tool__ = statusTool;
+                    window.__nano_result_tool__ = resultTool;
+                    nanoLog(`selected tools → submit=${submitTool}, status=${statusTool}, result=${resultTool}`);
+
+                    // スキーマからimage_urlsの型を推定
+                    const submitMeta = toolsArr.find(t=>String(t.name||'')===submitTool);
+                    try { if (submitMeta) nanoLog('submit schema: ' + JSON.stringify(submitMeta, null, 2)); } catch(_){ }
+                    // 成功パターンのみ: 'image_urls' は配列
+                    var submitArgs = { prompt, num_images: 1, image_urls: inputUrls };
+                  } catch (_toolErr) {
+                    // ツール一覧が取れなくても成功パターンのみ（配列）を使用
+                    var submitArgs = { prompt, num_images: 1, image_urls: inputUrls };
+                  }
+
+                  function pickRequestId(res){
+                    try {
+                      const cands = [res?.result?.request_id, res?.result?.id, res?.request_id, res?.id];
+                      for (const v of cands){ if (typeof v === 'string' && v.trim()) return v.trim(); }
+                      return null;
+                    } catch(_){ return null; }
+                  }
+                  function pickRequestIdFromHeaders(client){
+                    try {
+                      const dbg = client && client.getDebugInfo ? client.getDebugInfo() : null;
+                      const headers = (dbg && dbg.lastResponse && dbg.lastResponse.headers) || {};
+                      const keys = Object.keys(headers);
+                      const find = (re) => keys.find(k=>re.test(k));
+                      const k = find(/^(x-)?(mcp-)?(request|job|task)[-_]?id$/i) || find(/request[-_]?id/i) || null;
+                      const v = k ? headers[k] : null;
+                      return (typeof v === 'string' && v.trim()) ? v.trim() : null;
+                    } catch(_){ return null; }
+                  }
+                  function extractRequestIdFromText(obj){
+                    try {
+                      const txts = [];
+                      const collect = (o)=>{
+                        if (!o) return;
+                        if (typeof o === 'string') txts.push(o);
+                        else if (Array.isArray(o)) o.forEach(collect);
+                        else if (typeof o === 'object') Object.values(o).forEach(collect);
+                      };
+                      collect(obj);
+                      // 1) UUID形式を最優先で抽出（Markdown装飾や改行を許容）
+                      const reUuid = /request[\s_-]*id[^A-Za-z0-9]{0,10}[*_`>~\s\r\n]*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/i;
+                      for (const t of txts){
+                        const m = String(t).match(reUuid);
+                        if (m && m[1]) return m[1];
+                      }
+                      // 2) 汎用ID抽出（装飾文字の除去、ハイフン含むIDを優先）
+                      const reGeneric = /(request[\s_-]*id|task[\s_-]*id|job[\s_-]*id|id)\s*[:=]\s*[*_`>~"“”'\-]*\s*([A-Za-z0-9._\-]{6,})/i;
+                      for (const t of txts){
+                        const m = String(t).match(reGeneric);
+                        if (m && m[2]){
+                          const v = m[2].trim();
+                          // JSONの "id": 123456 の類を避ける（数字のみは除外）
+                          if (!/^\d+$/.test(v)) return v;
+                        }
+                      }
+                      return null;
+                    } catch(_){ return null; }
+                  }
+
+                  let submitRes = null; let submitPayload = submitArgs; let reqId = null;
+
+                  // JSON-RPC raw POST（成功パターン専用）
+                  async function rawCallTool(toolName, args){
+                    const headers = { 'Content-Type':'application/json', 'Accept':'application/json' };
+                    try { if (client && client.sessionId) headers['mcp-session-id'] = client.sessionId; } catch(_) {}
+                    if (serverConfig && serverConfig.authorization) headers['Authorization'] = serverConfig.authorization;
+                    const body = { jsonrpc:'2.0', id: Date.now(), method:'tools/call', params:{ name: toolName, arguments: args } };
+                    nanoLog('raw submit JSON-RPC 試行 body=' + JSON.stringify(body));
+                    // SeedreamはローカルMCPブリッジ経由に統一（実名ツールへの変換あり）
+                    const resp = await fetch(mcpUrl, { method:'POST', headers, body: JSON.stringify(body) });
+                    const txt = await resp.text();
+                    nanoLog('raw submit 応答: ' + txt.slice(0, 800));
+                    const hdrs = {}; try { resp.headers.forEach((v,k)=>hdrs[k]=v); } catch(_){ }
+                    nanoLog('raw submit headers: ' + JSON.stringify(hdrs));
+                    let obj = null; try { obj = JSON.parse(txt); } catch(_){ obj = null; }
+                    return { obj, txt, headers: hdrs };
+                  }
+
+                  function isMethodNotSupported(err){
+                    if (!err) return false;
+                    const code = Number(err.code);
+                    if (code === -32601) return true;
+                    const msg = String(err.message || err).toLowerCase();
+                    return msg.includes('tool not found') || msg.includes('tools not supported') || msg.includes('method not found');
+                  }
+
+                  try {
+                    nanoLog('submit 送信 payload=' + JSON.stringify(submitArgs));
+                    let raw = await rawCallTool(submitTool, submitArgs);
+                    let r = raw.obj || {};
+
+                    if (r && r.error && isMethodNotSupported(r.error)) {
+                      nanoLog('tools/call が未対応のため direct 呼び出しにフォールバックします');
+                      try {
+                        const fallbackObj = await rawCallDirect(submitTool, submitArgs);
+                        nanoLog('direct submit 応答: ' + JSON.stringify(fallbackObj));
+                        if (fallbackObj && !fallbackObj.error) {
+                          r = fallbackObj;
+                          raw = { obj: fallbackObj, txt: JSON.stringify(fallbackObj), headers: raw.headers || {} };
+                        } else {
+                          nanoLog('direct submit も失敗: ' + JSON.stringify(fallbackObj));
+                        }
+                      } catch (fallbackErr) {
+                        nanoLog('direct submit 例外: ' + String((fallbackErr && fallbackErr.message) || fallbackErr));
+                      }
+                    }
+
+                    submitRes = r;
+                    nanoLog('submit 応答: ' + JSON.stringify(r));
+
+                    // 提出直後の即時URL完了は扱わない（入力画像URLの誤検出を防ぐ）
+                    // ステータス→result の経路でのみ最終URLを適用する
+
+                    // request_id 抽出（本文テキストも検査）
+                    reqId = pickRequestId(r) || extractRequestIdFromText((r && r.result) || r) || extractRequestIdFromText(raw.txt) || raw.headers['x-request-id'] || raw.headers['request-id'] || raw.headers['mcp-request-id'];
+
+                    if (!reqId) {
+                      nanoLog('⚠️ request_id未検出、結果を返します');
+                      if (window.openJsonModal) {
+                        window.openJsonModal(JSON.stringify(r, null, 2), 'submit応答（コピー可）');
+                      }
+                      nanoText.textContent = 'Nano Banana Edit';
+                      return;
+                    }
+                  } catch(e) {
+                    if (window.openJsonModal) window.openJsonModal(String((e && e.message) || e), 'submitエラー');
+                    throw e;
+                  }
+
+                  nanoLog('request_id=' + reqId);
+
+                  // ポーリングは行わず、一度だけステータス確認のみ（デバッグ目的）
+                  nanoText.innerHTML = '<div class="loading-spinner"></div> ステータス確認中...';
+
+                  async function rawCallDirect(method, params){
+                    const headers = { 'Content-Type':'application/json', 'Accept':'application/json' };
+                    try { if (client && client.sessionId) headers['mcp-session-id'] = client.sessionId; } catch(_) {}
+                    if (serverConfig && serverConfig.authorization) headers['Authorization'] = serverConfig.authorization;
+                    const body = { jsonrpc:'2.0', id: Date.now(), method, params };
+                    nanoLog('raw direct JSON-RPC 試行 body=' + JSON.stringify(body));
+                    const resp = await fetch(mcpUrl, { method:'POST', headers, body: JSON.stringify(body) });
+                    const txt = await resp.text();
+                    nanoLog('raw direct 応答: ' + txt.slice(0, 800));
+                    let obj = {}; try { obj = JSON.parse(txt); } catch(_) {}
+                    return obj;
+                  }
+
+                  // 完了時の単発 result 取得
+                  async function performSingleResult(id){
+                    try {
+                      nanoText.innerHTML = '<div class="loading-spinner"></div> 取得中...';
+                      let got = (await rawCallTool(resultTool, { request_id: id })).obj;
+                      if (!got || got.error) {
+                        got = await rawCallDirect(resultTool, { request_id: id });
+                      }
+                      nanoLog('result 応答: ' + JSON.stringify(got));
+                      const url = extractAnyUrl(got && got.result) || extractAnyUrl(got) || null;
+                      if (!url) {
+                        const info = { submitPayload, submitRes, result: got };
+                        if (window.openJsonModal) {
+                          window.openJsonModal(JSON.stringify(info,null,2),'結果URLが見つかりません（コピー可）');
+                        } else {
+                          alert('結果URLが見つかりません');
+                        }
+                        nanoLog('\u26A0 結果URLを抽出できませんでした');
+                        return;
+                      }
+                      addGeneratedImage(url, prompt);
+                      setAfterImage(url);
+                      nanoLog('\u2705 完了: ' + url);
+                    } catch (e) {
+                      nanoLog('result 取得失敗: ' + String((e && e.message)||e));
+                    } finally {
+                      // 必ずUIを初期状態へ戻す
+                      try { nanoBtn.disabled = false; } catch(_){ }
+                      try { nanoText.textContent = 'Nano Banana Edit'; } catch(_){ }
+                    }
+                  }
+
+                  // ステータス抽出ユーティリティ（Markdown装飾/日本語も考慮）
+                  function extractStatusState(obj){
+                    try {
+                      // 1) 構造化フィールド優先
+                      const cand = [
+                        obj && obj.result && obj.result.status,
+                        obj && obj.status,
+                        obj && obj.result && obj.result.state,
+                        obj && obj.state
+                      ].find(v => typeof v === 'string' && v.trim());
+                      if (cand) return normalizeState(cand);
+
+                      // 2) テキスト走査（Markdown装飾を除去し、コロン後の装飾も許容）
+                      const texts = [];
+                      const collect = (o)=>{
+                        if (!o) return;
+                        if (typeof o === 'string') texts.push(o);
+                        else if (Array.isArray(o)) o.forEach(collect);
+                        else if (typeof o === 'object') Object.values(o).forEach(collect);
+                      };
+                      collect(obj);
+                      for (const t of texts){
+                        const plain = String(t).replace(/[\*`_~>|]/g,'');
+                        // 例: "Status: IN_PROGRESS" / "ステータス: 処理中"
+                        const m1 = plain.match(/status\s*[:：]\s*([A-Za-z_\-\s]+)/i);
+                        if (m1 && m1[1]) return normalizeState(m1[1]);
+                        const m2 = plain.match(/ステータス\s*[:：]\s*([\p{L}_\-\s]+)/u);
+                        if (m2 && m2[1]) return normalizeState(m2[1]);
+                        // キーワードから推定
+                        const s = normalizeState(plain);
+                        if (s) return s;
+                      }
+                      return null;
+                    } catch(_) { return null; }
+                  }
+
+                  function normalizeState(s){
+                    if (!s) return null;
+                    const x = String(s).trim().toLowerCase().replace(/\s+/g,' ').replace(/[-]/g,'_');
+                    // 直接表記
+                    if (/in[_ ]?progress|processing|running/.test(x)) return 'IN_PROGRESS';
+                    if (/in[_ ]?queue|queued|waiting|pending/.test(x)) return 'IN_QUEUE';
+                    if (/done|completed|complete|finished|ready|success|succeeded|ok/.test(x)) return 'DONE';
+                    if (/error|failed|failure/.test(x)) return 'ERROR';
+                    // 日本語
+                    if (/処理中/.test(x)) return 'IN_PROGRESS';
+                    if (/待機|キュー|保留/.test(x)) return 'IN_QUEUE';
+                    if (/完了|成功/.test(x)) return 'DONE';
+                    if (/失敗|エラー/.test(x)) return 'ERROR';
+                    // それっぽい単語が含まれていればIN_PROGRESS扱い
+                    if (/process|progress/.test(x)) return 'IN_PROGRESS';
+                    return null;
+                  }
+
+                  // まず tools/call の status ツールを1回だけ
+                  let st = (await rawCallTool(statusTool, { request_id: reqId })).obj;
+                  // tools/call が未対応等の可能性に備え、method=ステータスツール名 でも1回だけ試行
+                  if (!st || st.error) {
+                    st = await rawCallDirect(statusTool, { request_id: reqId });
+                  }
+                  const state1 = extractStatusState(st) || '(unknown)';
+                  nanoLog('status 一回応答: ' + JSON.stringify(st));
+                  nanoLog('status state: ' + state1);
+
+                  // 完了なら即座にresultを一回実行して終了
+                  if (state1 === 'DONE') {
+                    await performSingleResult(reqId);
+                    return;
+                  }
+
+                  // 指定秒ごとに N 回まで追加チェック（エラー応答で停止）
+                  const reDelaySec = (window.__nano_recheck_delay_sec__ && Number(window.__nano_recheck_delay_sec__)) || 5;
+                  const reTimes = (window.__nano_recheck_times__ && Number(window.__nano_recheck_times__)) || 20; // 1秒×20回
+                  let __nano_recheck_stopped__ = false;
+                  function setCheckingLabel(i){
+                    try { nanoText.innerHTML = `<div class=\"loading-spinner\"></div> 再チェック中... (${i}/${reTimes})`; } catch(_){}
+                  }
+                  setCheckingLabel(0);
+                  (function schedule(i){
+                    if (i > reTimes) { try { nanoText.textContent = 'Nano Banana Edit'; } catch(_){} return; }
+                    try {
+                      setTimeout(async ()=>{
+                        try {
+                          if (__nano_recheck_stopped__) { try { nanoText.textContent = 'Nano Banana Edit'; } catch(_){} return; }
+                          nanoLog(`⏳ ${reDelaySec}秒後に再ステータスチェック (nano ${i}/${reTimes})...`);
+                          let stN = (await rawCallTool(statusTool, { request_id: reqId })).obj;
+                          if (!stN || stN.error) stN = await rawCallDirect(statusTool, { request_id: reqId });
+                          const stateN = extractStatusState(stN) || '(unknown)';
+                          nanoLog('status 再チェック応答: ' + JSON.stringify(stN));
+                          nanoLog(`status state (#${i+1}): ` + stateN);
+                          if (stN && stN.error) { nanoLog('⛔ ステータスエラーにより再チェック停止'); try { nanoText.textContent = 'Nano Banana Edit'; } catch(_){} return; }
+                          if (stateN === 'DONE') {
+                            __nano_recheck_stopped__ = true;
+                            await performSingleResult(reqId);
+                            return;
+                          }
+                          setCheckingLabel(i);
+                          schedule(i+1);
+                        } catch (e2) {
+                          nanoLog('status 再チェック失敗: ' + String((e2 && e2.message)||e2));
+                          schedule(i+1);
+                        }
+                      }, reDelaySec * 1000);
+                    } catch(_){}
+                  })(1);
+
+                  // デバッグ目的のためここで終了
+                  return;
+
+                } catch(error) {
+                  const info = {
+                    error: String((error && error.message) || error),
+                    server: (serverConfig && serverConfig.url),
+                    hasAuth: !!(serverConfig && serverConfig.authorization),
+                    sessionId: (client && client.sessionId) || null,
+                    debug: (client && client.getDebugInfo ? client.getDebugInfo() : null)
+                  };
+                  const json = JSON.stringify(info, null, 2);
+                  if (window.openJsonModal) { window.openJsonModal(json, 'Nano Banana Edit 失敗（コピー可）'); }
+                  else { alert('Nano Banana Edit に失敗しました:\n' + json); }
+                  nanoLog('\u274C 失敗: ' + (info.error || 'unknown'));
+                } finally {
+                  nanoBtn.disabled = false;
+                  nanoText.textContent = 'Nano Banana Edit';
+                }
+              });
+            }
+
+            // ===== Seedream (MCP) Edit 追加 =====
+            if (seedBtn) {
+              seedBtn.addEventListener('click', async function() {
+                const seedText = byId('seedBtnText');
+                const prompt = ((byId('promptInput')||{}).value || '').trim();
+                if (!prompt) { alert('編集内容のプロンプトを入力してください'); return; }
+
+                // 入力画像を収集（複数対応）
+                let inputUrls = collectRegisteredImageUrls();
+                if (!inputUrls.length) { alert('入力画像が見つかりません'); return; }
+                logShortList('入力候補', inputUrls, 10);
+                // まとめてアップロード
+                try {
+                  nanoLog('画像をアップロード中...(seedream)');
+                  const uploaded = await uploadMany(inputUrls);
+                  if (!uploaded.length) { alert('画像のアップロードに失敗しました'); return; }
+                  inputUrls = uploaded;
+                  nanoLog('アップロード完了 (' + inputUrls.length + '件)');
+                } catch(exposeErr){ nanoLog('アップロードエラー: ' + String((exposeErr && exposeErr.message) || exposeErr)); return; }
+
+                ensureNanoLog(); nanoLog('\u23F1 Seedream 実行開始');
+                nanoLog('プロンプト: ' + prompt);
+                logShortList('Input URLs', inputUrls, 10);
+
+                const servers = mcpConfigManager.getServers();
+                const entries = Object.entries(servers||{});
+                const found = entries.find(([_, cfg]) => (cfg.url||'').includes('/i2i/fal/bytedance/seedream/v4'))
+                           || entries.find(([_, cfg]) => (cfg.url||'').includes('/i2i/fal/bytedance/seedream'))
+                           || entries.find(([_, cfg]) => (cfg.url||'').includes('/t2i/fal/bytedance/seedream'))
+                           || entries[0];
+                if (!found) {
+                  alert('MCPサーバーが未設定です。MCP設定タブで seedream/v4 を追加してください。');
+                  nanoLog('\u26A0 MCPサーバー未設定 (seedream)');
+                  return;
+                }
+                const [serverName, serverConfig] = found;
+                nanoLog('使用サーバー(Seedream): ' + serverName + ' → ' + ((serverConfig && serverConfig.url)||''));
+
+                let client;
+                try {
+                  seedBtn.disabled = true;
+                  seedText.innerHTML = '<div class="loading-spinner"></div> 送信中...';
+
+                  // Seedream: REST経路は上流がJSON-RPCで応答するためスキップし、MCP経路に統一
+
+                  // プロキシ経由URLに自動変換（MCP経路）
+                  let mcpUrl = serverConfig.url;
+                  const kamuiCodeUrl = window.KAMUI_CODE_URL;
+                  const kamuiCodeRegex = new RegExp(`^https?://${kamuiCodeUrl}/`, 'i');
+                  if (kamuiCodeRegex.test(mcpUrl)) {
+                    const pathPart = mcpUrl.replace(kamuiCodeRegex, '');
+                    mcpUrl = 'http://localhost:3001/mcp/' + pathPart;
+                    nanoLog('プロキシ経由URL変換: ' + mcpUrl);
+                  }
+
+                  client = new HttpMcpClient(mcpUrl, {
+                    authorization: serverConfig.authorization,
+                    clientName: 'kamui-web-client',
+                    clientVersion: '1.0.0'
+                  });
+                  window.currentMcpClient = client;
+
+                  nanoLog('initialize 開始: ' + mcpUrl);
+                  await client.initialize();
+                  nanoLog('initialize 完了, sessionId=' + (client.sessionId||'(none)'));
+
+                  let submitTool = 'seedream_edit_submit';
+                  let statusTool = 'seedream_edit_status';
+                  let resultTool = 'seedream_edit_result';
+                  let overrideSubmit = null, overrideStatus = null, overrideResult = null;
+                  try {
+                    const u = new URL(serverConfig.url);
+                    const sp = u.searchParams;
+                    overrideSubmit = sp.get('tool_submit');
+                    overrideStatus = sp.get('tool_status');
+                    overrideResult = sp.get('tool_result');
+                    if (overrideSubmit || overrideStatus || overrideResult) {
+                      nanoLog('URL overrides: ' + JSON.stringify({ overrideSubmit, overrideStatus, overrideResult }));
+                    }
+                  } catch(_){}
+                  try {
+                    const listed = await client.listTools();
+                    const toolsArr = (listed && listed.result && listed.result.tools) || listed.tools || [];
+                    const names = toolsArr.map(t=>String(t.name||''));
+                    nanoLog('tools: ' + JSON.stringify(names));
+                    const pick = {
+                      submit(names){
+                        let c = names.find(n=>/submit/i.test(n));
+                        if (c) return c;
+                        c = names.find(n=>/(create|start|enqueue|queue|run|begin|process|edit)/i.test(n) && !/(status|result|get)/i.test(n));
+                        return c || null;
+                      },
+                      status(names){ return names.find(n=>/(status|poll)/i.test(n)) || null; },
+                      result(names){ return names.find(n=>/(result|get)/i.test(n)) || null; }
+                    };
+                    submitTool = overrideSubmit || pick.submit(names) || submitTool;
+                    statusTool = overrideStatus || pick.status(names) || statusTool;
+                    resultTool = overrideResult || pick.result(names) || resultTool;
+                    window.__seed_status_tool__ = statusTool;
+                    window.__seed_result_tool__ = resultTool;
+                    nanoLog(`selected tools → submit=${submitTool}, status=${statusTool}, result=${resultTool}`);
+
+                    const submitMeta = toolsArr.find(t=>String(t.name||'')===submitTool);
+                    try { if (submitMeta) nanoLog('submit schema: ' + JSON.stringify(submitMeta, null, 2)); } catch(_){ }
+                  } catch(_){ /* ツール一覧が取れなくても既定引数で続行 */ }
+
+                  async function rawCallTool(toolName, args){
+                    const headers = { 'Content-Type':'application/json', 'Accept':'application/json' };
+                    try { if (client && client.sessionId) headers['mcp-session-id'] = client.sessionId; } catch(_) {}
+                    if (serverConfig && serverConfig.authorization) headers['Authorization'] = serverConfig.authorization;
+                    const body = { jsonrpc:'2.0', id: Date.now(), method:'tools/call', params:{ name: toolName, arguments: args } };
+                    nanoLog('raw submit JSON-RPC 試行 body=' + JSON.stringify(body));
+                    // 1st: ローカルMCP（安定・CORS対応）
+                    let resp = await fetch(mcpUrl, { method:'POST', headers, body: JSON.stringify(body) });
+                    let txt = await resp.text();
+                    nanoLog('raw submit 応答: ' + txt.slice(0, 800));
+                    const hdrs = {}; try { resp.headers.forEach((v,k)=>hdrs[k]=v); } catch(_){ }
+                    nanoLog('raw submit headers: ' + JSON.stringify(hdrs));
+                    let obj = null; try { obj = JSON.parse(txt); } catch(_){ obj = null; }
+                    // Fallback: 直接上流（後方互換、既存検出を壊さない）
+                    if (!resp.ok || (obj && obj.error && /tool\s+not\s+found|-32601|tools\s+not\s+supported/i.test(String(obj.error.message||'')))) {
+                      try {
+                        const resp2 = await fetch(serverConfig.url, { method:'POST', headers, body: JSON.stringify(body) });
+                        const txt2 = await resp2.text();
+                        nanoLog('raw submit 応答(fallback): ' + txt2.slice(0, 800));
+                        const hdrs2 = {}; try { resp2.headers.forEach((v,k)=>hdrs2[k]=v); } catch(_){ }
+                        nanoLog('raw submit headers(fallback): ' + JSON.stringify(hdrs2));
+                        let obj2 = null; try { obj2 = JSON.parse(txt2); } catch(_){ obj2 = null; }
+                        return { obj: obj2, txt: txt2, headers: hdrs2 };
+                      } catch(_){ /* ignore, keep first */ }
+                    }
+                    return { obj, txt, headers: hdrs };
+                  }
+
+                  const submitArgs = { prompt, num_images: 1, image_urls: inputUrls };
+                  nanoLog('submit 送信 payload=' + JSON.stringify(submitArgs));
+                  const raw = await rawCallTool(submitTool, submitArgs);
+                  const r = raw.obj || {};
+                  nanoLog('submit 応答: ' + JSON.stringify(r));
+
+                  function pickRequestId(res){
+                    try {
+                      const cands = [res?.result?.request_id, res?.result?.id, res?.request_id, res?.id];
+                      for (const v of cands){ if (typeof v === 'string' && v.trim()) return v.trim(); }
+                      return null;
+                    } catch(_){ return null; }
+                  }
+
+                  function extractRequestIdFromText(obj){
+                    try {
+                      const txts = [];
+                      const collect = (o)=>{
+                        if (!o) return;
+                        if (typeof o === 'string') txts.push(o);
+                        else if (Array.isArray(o)) o.forEach(collect);
+                        else if (typeof o === 'object') Object.values(o).forEach(collect);
+                      };
+                      collect(obj);
+                      // JSON文字列内の request_id を抽出（Markdown装飾も許容）
+                      const reUuid = /request[\s_-]*id[^A-Za-z0-9]{0,10}[*_`>~\s\r\n]*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/i;
+                      for (const t of txts){
+                        const m = String(t).match(reUuid);
+                        if (m && m[1]) return m[1];
+                        // JSONとしてparse可能なら中からも再帰的に探す
+                        try { const j = JSON.parse(String(t)); const v = extractRequestIdFromText(j); if (v) return v; } catch(_){ }
+                      }
+                      return null;
+                    } catch(_){ return null; }
+                  }
+
+                  const reqId = pickRequestId(r)
+                              || extractRequestIdFromText((r && r.result) || r)
+                              || extractRequestIdFromText(raw.txt)
+                              || (raw.headers['x-request-id'] || raw.headers['request-id'] || raw.headers['mcp-request-id']);
+                  if (!reqId) {
+                    nanoLog('⚠️ request_id未検出、結果を返します');
+                    if (window.openJsonModal) window.openJsonModal(JSON.stringify(r, null, 2), 'Seedream submit応答（コピー可）');
+                    seedText.textContent = 'Seedream Edit';
+                    return;
+                  }
+                  nanoLog('request_id=' + reqId);
+
+                  seedText.innerHTML = '<div class="loading-spinner"></div> ステータス確認中...';
+
+                  async function rawCallDirect(method, params){
+                    const headers = { 'Content-Type':'application/json', 'Accept':'application/json' };
+                    try { if (client && client.sessionId) headers['mcp-session-id'] = client.sessionId; } catch(_) {}
+                    if (serverConfig && serverConfig.authorization) headers['Authorization'] = serverConfig.authorization;
+                    const body = { jsonrpc:'2.0', id: Date.now(), method, params };
+                    nanoLog('raw direct JSON-RPC 試行 body=' + JSON.stringify(body));
+                    // 1st: ローカルMCP
+                    try {
+                      const resp = await fetch(mcpUrl, { method:'POST', headers, body: JSON.stringify(body) });
+                      const txt = await resp.text();
+                      nanoLog('raw direct 応答: ' + txt.slice(0, 800));
+                      let obj = {}; try { obj = JSON.parse(txt); } catch(_){ }
+                      // tool未対応ならfallback
+                      if (obj && obj.error && /tool\s+not\s+found|-32601|tools\s+not\s+supported/i.test(String(obj.error.message||''))) throw new Error('fallback');
+                      return obj;
+                    } catch(_fallback){
+                      // 2nd: 直接上流
+                      const resp2 = await fetch(serverConfig.url, { method:'POST', headers, body: JSON.stringify(body) });
+                      const txt2 = await resp2.text();
+                      nanoLog('raw direct 応答(fallback): ' + txt2.slice(0, 800));
+                      let obj2 = {}; try { obj2 = JSON.parse(txt2); } catch(_){ }
+                      return obj2;
+                    }
+                  }
+
+                  async function performSingleResult(id){
+                    try {
+                      seedText.innerHTML = '<div class="loading-spinner"></div> 取得中...';
+                      let got = (await rawCallTool(resultTool, { request_id: id })).obj;
+                      if (!got || got.error) got = await rawCallDirect(resultTool, { request_id: id });
+                      nanoLog('result 応答: ' + JSON.stringify(got));
+                      const url = extractAnyUrl(got && got.result) || extractAnyUrl(got) || null;
+                      if (url) {
+                        addGeneratedImage(url, prompt);
+                        setAfterImage(url);
+                        nanoLog('\u2705 完了: ' + url);
+                      } else {
+                        nanoLog('\u26A0 結果URLを抽出できませんでした');
+                      }
+                    } catch(e) {
+                      nanoLog('result 取得失敗: ' + String((e && e.message)||e));
+                    } finally {
+                      seedText.textContent = 'Seedream Edit';
+                    }
+                  }
+
+                  // 単発 status → 完了なら result
+                  let st = (await rawCallTool(statusTool, { request_id: reqId })).obj;
+                  if (!st || st.error) st = await rawCallDirect(statusTool, { request_id: reqId });
+                  nanoLog('status 一回応答: ' + JSON.stringify(st));
+
+                  function normalizeStateSeed(x){
+                    if (!x) return null;
+                    const s = String(x).trim().toLowerCase();
+                    if (/in[_ ]?progress|processing|running/.test(s)) return 'IN_PROGRESS';
+                    if (/in[_ ]?queue|queued|waiting|pending/.test(s)) return 'IN_QUEUE';
+                    if (/done|completed|complete|finished|ready|success|succeeded|ok/.test(s)) return 'DONE';
+                    if (/error|failed|failure/.test(s)) return 'ERROR';
+                    return null;
+                  }
+
+                  function extractStatusStateSeedream(obj){
+                    try {
+                      // 1) 構造化
+                      const direct = obj?.result?.status || obj?.status || obj?.result?.state || obj?.state;
+                      const n1 = normalizeStateSeed(direct);
+                      if (n1) return n1;
+                      // 2) テキスト走査（content[*].text など）
+                      const texts = [];
+                      (function collect(o){
+                        if (!o) return;
+                        if (typeof o === 'string') texts.push(o);
+                        else if (Array.isArray(o)) o.forEach(collect);
+                        else if (typeof o === 'object') Object.values(o).forEach(collect);
+                      })(obj);
+                      for (const t of texts){
+                        const plain = String(t);
+                        // JSON文字列ならparseして status を再帰的に抽出
+                        try {
+                          const j = JSON.parse(plain);
+                          const n2 = extractStatusStateSeedream(j);
+                          if (n2) return n2;
+                        } catch(_){}
+                        // プレーンテキストから推定
+                        const norm = normalizeStateSeed(plain);
+                        if (norm) return norm;
+                      }
+                      // 3) 最後に全文を対象にヒューリスティック
+                      const str = JSON.stringify(obj||{});
+                      const n3 = normalizeStateSeed(str);
+                      if (n3) return n3;
+                    } catch(_){ }
+                    return null;
+                  }
+
+                  const state = extractStatusStateSeedream(st) || '(unknown)';
+                  nanoLog('status state: ' + state);
+
+                  // 即完了なら結果取得して終了
+                  if (state === 'DONE') {
+                    await performSingleResult(reqId);
+                    return;
+                  }
+
+                  // 進行中/キュー中はポーリング（Nano Banana同様の挙動）
+                  const reDelaySecSeed = (window.__seed_recheck_delay_sec__ && Number(window.__seed_recheck_delay_sec__)) || 10;
+                  const reTimesSeed   = (window.__seed_recheck_times__ && Number(window.__seed_recheck_times__)) || 12; // 10秒×12回=最大約2分
+                  let __seed_recheck_stopped__ = false;
+
+                  function setCheckingLabel(i){
+                    seedText.innerHTML = `<div class="loading-spinner"></div> 再チェック中... (${i}/${reTimesSeed})`;
+                  }
+
+                  setCheckingLabel(0);
+
+                  (function scheduleSeed(i){
+                    if (i > reTimesSeed || __seed_recheck_stopped__) {
+                      seedText.textContent = 'Seedream Edit';
+                      return;
+                    }
+                    setTimeout(async () => {
+                      if (__seed_recheck_stopped__) { seedText.textContent = 'Seedream Edit'; return; }
+                      try {
+                        nanoLog(`⏳ ${reDelaySecSeed}秒後に再ステータスチェック (seedream ${i}/${reTimesSeed})...`);
+                        let stN = (await rawCallTool(statusTool, { request_id: reqId })).obj;
+                        if (!stN || stN.error) stN = await rawCallDirect(statusTool, { request_id: reqId });
+                        const stateN = extractStatusStateSeedream(stN) || '(unknown)';
+                        nanoLog('status 再チェック応答(seedream): ' + JSON.stringify(stN));
+                        nanoLog(`status state (seedream #${i}): ` + stateN);
+                        if (stN && stN.error) {
+                          nanoLog('⛔ ステータスエラーにより再チェック停止(seedream)');
+                          seedText.textContent = 'Seedream Edit';
+                          return;
+                        }
+                        if (stateN === 'DONE') {
+                          __seed_recheck_stopped__ = true;
+                          await performSingleResult(reqId);
+                          return;
+                        }
+                        setCheckingLabel(i);
+                        scheduleSeed(i + 1);
+                      } catch (pollErr) {
+                        nanoLog('⚠️ 再チェック中に例外(seedream): ' + String((pollErr && pollErr.message) || pollErr));
+                        scheduleSeed(i + 1);
+                      }
+                    }, reDelaySecSeed * 1000);
+                  })(1);
+                } catch(error) {
+                  const info = {
+                    error: String((error && error.message) || error),
+                    server: (serverConfig && serverConfig.url),
+                    hasAuth: !!(serverConfig && serverConfig.authorization),
+                    sessionId: (client && client.sessionId) || null,
+                    debug: (client && client.getDebugInfo ? client.getDebugInfo() : null)
+                  };
+                  const json = JSON.stringify(info, null, 2);
+                  if (window.openJsonModal) { window.openJsonModal(json, 'Seedream Edit 失敗（コピー可）'); }
+                  else { alert('Seedream Edit に失敗しました:\n' + json); }
+                  nanoLog('\u274C 失敗: ' + (info.error || 'unknown'));
+                } finally {
+                  seedBtn.disabled = false;
+                  seedText.textContent = 'Seedream Edit';
+                }
+              });
+            }
+
+            var uploadBaseCandidates = window.__UPLOAD_BASE_CANDIDATES__ = window.__UPLOAD_BASE_CANDIDATES__ || (function(){
+
+              if (!window.__UPLOAD_BASE__ && window.API_BASE_URL) window.__UPLOAD_BASE__ = window.API_BASE_URL;
+
+              if (!window.__UPLOAD_BASE__ && window.location && window.location.port === '3001') window.__UPLOAD_BASE__ = window.location.origin;
+
+              if (!window.__UPLOAD_BASE__ && window.location && window.location.port === '8888') window.__UPLOAD_BASE__ = window.location.origin;
+
+              const list = [];
+
+              if (window.__UPLOAD_BASE__) list.push(window.__UPLOAD_BASE__);
+
+              if (window.API_BASE_URL) list.push(window.API_BASE_URL);
+
+              list.push(
+                'http://localhost:3001','http://127.0.0.1:3001',
+                'http://localhost:7777','http://127.0.0.1:7777',
+                'http://localhost:8888','http://127.0.0.1:8888'
+              );
+
+              if (window.location && window.location.origin) list.push(window.location.origin);
+
+              return list
+
+                .map(v => (typeof v === 'string' ? v : String(v || '')))
+
+                .map(v => v.trim())
+
+                .filter(Boolean)
+
+                .map(v => v.replace(/\/+$/, ''));
+
+            })();
+
+            function toAbsoluteUrl(u){
+              try {
+                if (!u) return u;
+                if (/^data:/i.test(u) || /^blob:/i.test(u)) return u;
+                if (/^https?:\/\//i.test(u)) return u;
+                if (u.startsWith('/')) {
+                  const base = uploadBaseCandidates.find(Boolean);
+                  if (base) {
+                    const normalizedBase = base.replace(/\/+$/, '');
+                    const normalizedPath = u.replace(/^\/+/, '');
+                    return normalizedBase + '/' + normalizedPath;
+                  }
+                  return u;
+                }
+                const a = document.createElement('a');
+                a.href = u;
+                if (a.protocol && a.host) return a.href;
+                const fallbackBase = uploadBaseCandidates.find(Boolean);
+                if (fallbackBase) {
+                  const normalizedBase = fallbackBase.replace(/\/+$/, '');
+                  const normalizedPath = u.replace(/^\/+/, '');
+                  return normalizedBase + '/' + normalizedPath;
+                }
+                return u;
+              } catch(_) { return u; }
+            }
+
+            async function postJsonThroughCandidates(path, payload, label){
+              const seen = new Set();
+              const errors = [];
+              for (const baseRaw of uploadBaseCandidates){
+                if (!baseRaw) continue;
+                const base = String(baseRaw).replace(/\/+$/, '');
+                if (!base) continue;
+                if (seen.has(base)) continue;
+                seen.add(base);
+                const endpoint = base + path;
+                try {
+                  if (label) nanoLog(`${label}試行: ${endpoint}`);
+                  const resp = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                  });
+                  const data = await resp.json().catch(() => ({}));
+                  if (resp.ok) {
+                    return { ok: true, endpoint, data };
+                  }
+                  errors.push({ endpoint, status: resp.status, data });
+                } catch (err) {
+                  errors.push({ endpoint, error: String((err && err.message) || err) });
+                }
+              }
+              return { ok: false, errors };
+            }
+
+
+
+            // 以前のポーリング関数は使用しない（単発取得方針）
+
+            // 入力画像ユーティリティ（複数対応）
+            async function uploadOne(url){
+              const abs = toAbsoluteUrl(url);
+              let uploadAttempt = await postJsonThroughCandidates('/upload', { url: abs }, 'アップロード');
+              if (uploadAttempt.ok) {
+                const data = uploadAttempt.data || {};
+                const uploaded = data.uploaded_url || data.url || data.public_url;
+                if (uploaded) return uploaded;
+                uploadAttempt = { ok: false, errors: [{ endpoint: uploadAttempt.endpoint, status: 'ok-but-no-url', data }] };
+              }
+              let exposeAttempt = await postJsonThroughCandidates('/expose', { url: abs }, '公開');
+              if (exposeAttempt.ok) {
+                const data2 = exposeAttempt.data || {};
+                const exposed = data2.public_url || data2.url || data2.uploaded_url;
+                if (exposed) return exposed;
+                exposeAttempt = { ok: false, errors: [{ endpoint: exposeAttempt.endpoint, status: 'ok-but-no-url', data: data2 }] };
+              }
+              nanoLog('アップロード失敗: ' + abs);
+              try {
+                console.warn('upload failed', { target: abs, uploadAttempt, exposeAttempt });
+              } catch(_){ /* noop */ }
+              if (window.openJsonModal) {
+                const info = {
+                  target: abs,
+                  uploadErrors: uploadAttempt && uploadAttempt.errors,
+                  exposeErrors: exposeAttempt && exposeAttempt.errors
+                };
+                try { window.openJsonModal(JSON.stringify(info, null, 2), 'アップロード失敗（コピー可）'); } catch(_){ }
+              }
+              return null;
+            }
+
+            function collectRegisteredImageUrls(){
+              try {
+                const useAll = !!window.__use_all_reference_images__;
+                const sel = useAll ? '#referenceGrid img' : '#referenceGrid .reference-item.selected img';
+                let arr = Array.from(qsa(sel)).map(el=>el && el.src).filter(Boolean);
+                const manualSet = window.__input_manual_set__;
+                if (manualSet && manualSet.size) {
+                  arr.push(...Array.from(manualSet));
+                }
+                const beforeImg = qs('#beforeImage img');
+                if (arr.length === 0 && beforeImg && beforeImg.src) arr.push(beforeImg.src);
+                // use_all のときは除外リストを適用
+                if (useAll && window.__input_exclude_set__ && window.__input_exclude_set__.size){
+                  arr = arr.filter(u => !window.__input_exclude_set__.has(toAbsoluteUrl(u)));
+                }
+                // デフォルトでプレースホルダのみの場合、指定枚数ぶん複製
+                if (arr.length === 1 && /^data:image\/png;base64/.test(arr[0]) && window.__default_placeholder_count__ > 1){
+                  const copies = new Array(window.__default_placeholder_count__-1).fill(arr[0]);
+                  arr.push(...copies);
+                }
+                // 絶対URL化 + 重複排除
+                const uniq = Array.from(new Set(arr.map(toAbsoluteUrl)));
+                const limit = Math.max(1, Number(window.__max_input_images__)||10);
+                return uniq.slice(0, limit);
+              } catch(_) { return []; }
+            }
+
+            async function uploadMany(urls){
+              const out = [];
+              for (const u of urls){ const up = await uploadOne(u); if (up) out.push(up); }
+              return out;
+            }
+
+            // 表示用ファイル名の短縮（デバッグログ過多の抑制）
+            function fileNameFromUrl(u){
+              try {
+                if (/^data:/i.test(u)){
+                  const m = String(u).match(/^data:([^;,]+)/i); const mime = (m && m[1]) || '';
+                  const ext = /png/i.test(mime) ? 'png' : /jpe?g/i.test(mime) ? 'jpg' : /webp/i.test(mime) ? 'webp' : /gif/i.test(mime) ? 'gif' : 'bin';
+                  return 'inline.' + ext;
+                }
+                const a = document.createElement('a'); a.href = toAbsoluteUrl(u);
+                let name = (a.pathname.split('/').pop() || '').trim();
+                if (!name) name = a.hostname || 'file';
+                return name;
+              } catch(_) { return 'file'; }
+            }
+            function shortName(u, n){
+              const s = fileNameFromUrl(u);
+              const limit = Math.max(4, Number(n)||10);
+              return s.length > limit ? (s.slice(0, limit) + '…') : s;
+            }
+            function logShortList(prefix, urls, n){
+              try { nanoLog(`${prefix} ${urls.length}件: ` + urls.map(u=>shortName(u,n||10)).join(', ')); } catch(_){}
+            }
+
+            function updateInputTray(){
+              try {
+                const tray = byId('inputTray');
+                const info = byId('inputTrayInfo');
+                const useAllEl = byId('toggleUseAll');
+                if (!tray || !info) return;
+                // モード表示と同期
+                if (useAllEl) useAllEl.checked = !!window.__use_all_reference_images__;
+                const urls = collectRegisteredImageUrls();
+                const manualSet = window.__input_manual_set__;
+                const excludedSet = window.__input_exclude_set__;
+                tray.innerHTML = '';
+                urls.forEach(u => {
+                  const abs = toAbsoluteUrl(u);
+                  const isManual = !!(manualSet && manualSet.has(abs));
+                  const isExcluded = !!(excludedSet && excludedSet.has(abs));
+                  const item = document.createElement('div');
+                  item.style.cssText = 'position:relative;width:60px;height:60px;border:1px solid #333;border-radius:6px;overflow:hidden;';
+                  const filterStyle = isManual ? 'none' : (isExcluded ? 'grayscale(1) opacity(0.4)' : 'none');
+                  item.innerHTML = `
+                    <img src="${abs}" alt="input" style="width:100%;height:100%;object-fit:cover;filter:${filterStyle};">
+                    <button title="${isManual ? '手動追加を解除' : '除外'}" style="position:absolute;top:2px;right:2px;background:#0008;color:#fff;border:none;border-radius:4px;cursor:pointer;padding:0 4px;">×</button>
+                  `;
+                  const btn = item.querySelector('button');
+                  btn.addEventListener('click', (e)=>{
+                    e.preventDefault();
+                    if (manualSet && manualSet.has(abs)) {
+                      manualSet.delete(abs);
+                      updateInputTray();
+                      return;
+                    }
+                    if (window.__use_all_reference_images__) {
+                      window.__input_exclude_set__.add(abs);
+                      // 参照側も視覚的にマーク
+                      const img = Array.from(qsa('#referenceGrid img')).find(x=>toAbsoluteUrl(x.src)===abs);
+                      if (img && img.closest('.reference-item')) img.closest('.reference-item').classList.add('excluded');
+                    } else {
+                      // 選択制の場合は該当アイテムの選択を解除
+                      const img = Array.from(qsa('#referenceGrid .reference-item.selected img')).find(x=>toAbsoluteUrl(x.src)===abs);
+                      if (img && img.closest('.reference-item')) img.closest('.reference-item').classList.remove('selected');
+                    }
+                    updateInputTray();
+                  });
+                  if (isManual) {
+                    item.style.border = '1px solid #4a9eff';
+                    item.style.boxShadow = '0 0 0 1px rgba(74,158,255,0.6)';
+                    const badge = document.createElement('div');
+                    badge.textContent = '手動';
+                    badge.style.cssText = 'position:absolute;left:4px;bottom:4px;background:rgba(74,158,255,0.85);color:#061018;font-size:10px;font-weight:600;padding:1px 4px;border-radius:4px;';
+                    item.appendChild(badge);
+                  }
+                  tray.appendChild(item);
+                });
+                info.textContent = '対象: ' + urls.length + '件';
+              } catch(_){}
+            }
+
+            function extractAnyUrl(obj){
+              try {
+                if (!obj) return null;
+                // 文字列: コードブロック内JSON→URL、プレーンテキスト中のURLを抽出
+                if (typeof obj === 'string') {
+                  const s = String(obj);
+                  // ```json ... ``` を優先的に解析
+                  const m = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+                  if (m && m[1]) {
+                    try {
+                      const j = JSON.parse(m[1]);
+                      const u = extractAnyUrl(j);
+                      if (u) return u;
+                    } catch(_){}
+                  }
+                  // テキスト中の最初のURL（画像拡張子を優先）
+                  const re = /https?:\/\/[^\s<>"'()]+/g;
+                  const list = s.match(re);
+                  if (list && list.length) {
+                    const img = list.find(u => /\.(png|jpe?g|webp|gif|bmp|svg)(\?|#|$)/i.test(u));
+                    return img || list[0];
+                  }
+                  return null;
+                }
+                // 配列
+                if (Array.isArray(obj)) {
+                  for (const it of obj){ const u = extractAnyUrl(it); if (u) return u; }
+                  return null;
+                }
+                // オブジェクト
+                if (typeof obj === 'object') {
+                  const keys = ['url','image_url','image','result_url','download_url','href'];
+                  for (const k of keys){ if (obj && obj[k]){ const u = extractAnyUrl(obj[k]); if (u) return u; } }
+                  // content配列({type:'text', text:'...'})などを走査
+                  if (obj && obj.content) {
+                    const u = extractAnyUrl(obj.content);
+                    if (u) return u;
+                  }
+                  for (const v of Object.values(obj)){ const u = extractAnyUrl(v); if (u) return u; }
+                }
+                return null;
+              } catch(_) { return null; }
+            }
+
+            // ===== デバッグログユーティリティ =====
+            function ensureNanoLog(){
+              const box = byId('nanoDebugBox');
+              const pre = byId('nanoDebugLog');
+              const btnCopy = byId('nanoLogCopy');
+              const btnClear = byId('nanoLogClear');
+              const auto = byId('nanoLogAutoscroll');
+              if (!box || !pre) return;
+              if (!box.dataset.ready){
+                box.dataset.ready = '1';
+                if (btnCopy) btnCopy.addEventListener('click', async ()=>{
+                  try { await navigator.clipboard.writeText(pre.textContent||''); alert('コピーしました'); } catch(_){}
+                });
+                if (btnClear) btnClear.addEventListener('click', ()=>{ if (window.clearNanoLogs) window.clearNanoLogs(); });
+                // 復元
+                try { const saved = localStorage.getItem('nano-debug-log'); if (saved) { pre.textContent = saved; } } catch(_){ }
+              }
+            }
+            // ログ全消去（UI/保存の両方）
+            window.clearNanoLogs = function(){
+              try {
+                const pre = byId('nanoDebugLog');
+                if (pre) pre.textContent = '';
+                try { localStorage.removeItem('nano-debug-log'); } catch(_){}
+                const dbg = byId('debugOutput');
+                if (dbg) dbg.innerHTML = 'クリアしました。';
+              } catch(_){}
+            };
+            function nanoLog(msg){
+              try {
+                const pre = byId('nanoDebugLog');
+                const auto = byId('nanoLogAutoscroll');
+                if (!pre) return;
+                const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+                pre.textContent += (pre.textContent? '\n' : '') + line;
+                try { localStorage.setItem('nano-debug-log', pre.textContent); } catch(_){ }
+                var dbgBox = byId('nanoDebugBox');
+                if (dbgBox && dbgBox.open && auto && auto.checked) {
+                  pre.scrollTop = pre.scrollHeight;
+                }
+              } catch(_){}
+            }
+
+            // サーバーリストの更新
+            function updateServerList() {
+                const serverList = byId('serverList');
+                if (!serverList) return;
+
+                const servers = mcpConfigManager.getServers();
+                serverList.innerHTML = '';
+
+                Object.entries(servers).forEach(([name, config]) => {
+                    const serverItem = document.createElement('div');
+                    serverItem.className = 'server-item';
+                    serverItem.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div class="server-status" id="status-${name}"></div>
+                            <div>
+                                <div style="font-size: 13px; font-weight: 500;">${config.description || name}</div>
+                                <div style="font-size: 11px; color: #888;">${config.url}</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 4px;">
+                            <button class="result-action-btn" onclick="testMcpConnection('${name}')" title="接続テスト">🔗</button>
+                            <button class="result-action-btn" onclick="listMcpTools('${name}')" title="ツール一覧">🧰</button>
+                            <button class="result-action-btn" onclick="removeMcpServer('${name}')" title="削除">🗑️</button>
+                        </div>
+                    `;
+                    serverList.appendChild(serverItem);
+                });
+            }
+
+            // サーバーの追加
+            const addServerBtn = byId('addServer');
+            if (addServerBtn) {
+                addServerBtn.addEventListener('click', function() {
+                    const name = (byId('serverName')?.value || '').trim();
+                    const url = (byId('serverUrl')?.value || '').trim();
+                    const auth = (byId('serverAuth')?.value || '').trim();
+
+                    if (!name || !url) {
+                        alert('サーバー名とURLは必須です');
+                        return;
+                    }
+
+                    const serverConfig = {
+                        url: url,
+                        type: 'http',
+                        description: name,
+                        authorization: auth ? `Bearer ${auth}` : null
+                    };
+
+                    if (mcpConfigManager.addServer(name, serverConfig)) {
+                        const nameInput = byId('serverName');
+                        const urlInput = byId('serverUrl');
+                        const authInput = byId('serverAuth');
+                        if (nameInput) nameInput.value = '';
+                        if (urlInput) urlInput.value = '';
+                        if (authInput) authInput.value = '';
+                        updateServerList();
+                    } else {
+                        alert('サーバーの追加に失敗しました');
+                    }
+                });
+            }
+
+            // サーバーの削除（グローバル関数として）
+            window.removeMcpServer = function(name) {
+                if (confirm(`サーバー "${name}" を削除しますか？`)) {
+                    mcpConfigManager.removeServer(name);
+                    updateServerList();
+                }
+            };
+
+            // 接続テスト（グローバル関数として）
+            window.testMcpConnection = async function(name) {
+                debugLog(`🔗 testMcpConnection開始: ${name}`);
+                const statusEl = byId(`status-${name}`);
+                debugLog('statusEl:', statusEl ? '見つかりました' : '見つかりません');
+                const config = mcpConfigManager.getServer(name);
+                debugLog('サーバー設定:', config);
+
+                if (!config) {
+                    const msg = `MCPサーバー設定が見つかりません: ${name}`;
+                    console.warn(msg);
+                    if (statusEl) statusEl.classList.add('error');
+                    alert(msg);
+                    return;
+                }
+
+                statusEl.className = 'server-status';
+
+                try {
+                    // プロキシ経由URLに自動変換
+                    let testUrl = config.url;
+                    const kamuiCodeUrl = window.KAMUI_CODE_URL;
+                    const kamuiCodeRegex = new RegExp(`^https?://${kamuiCodeUrl}/`, 'i');
+                    if (kamuiCodeRegex.test(testUrl)) {
+                        const pathPart = testUrl.replace(kamuiCodeRegex, '');
+                        testUrl = 'http://localhost:3001/mcp/' + pathPart;
+                        debugLog(`🔄 URL変換: ${config.url} → ${testUrl}`);
+                    }
+
+                    const client = new HttpMcpClient(testUrl, {
+                        authorization: config.authorization,
+                        clientName: 'kamui-web-client',
+                        clientVersion: '1.0.0'
+                    });
+                    window.currentMcpClient = client;
+
+                    debugLog('🔌 接続テスト開始...');
+                    const result = await client.testConnection();
+                    if (result.success) {
+                        statusEl.classList.add('connected');
+                        debugLog(`✅ ${name} 接続成功!`, result.serverInfo);
+                    } else {
+                        statusEl.classList.add('error');
+                        const info = {
+                          error: result.error,
+                          server: config.url,
+                          hasAuth: !!config.authorization,
+                          sessionId: client.sessionId || null,
+                          debug: (client.getDebugInfo ? client.getDebugInfo() : null),
+                          advice: '開発用プロキシ経由URL（例: http://localhost:3001/mcp/...）の利用を推奨'
+                        };
+                        debugLog(`❌ ${name} 接続失敗`, info);
+                        const json = JSON.stringify(info, null, 2);
+                        if (window.openJsonModal) { window.openJsonModal(json, '接続テスト 失敗（コピー可）'); }
+                    }
+                } catch (error) {
+                    debugLog(`💥 例外発生 in testMcpConnection`, {
+                        error: error.message,
+                        stack: error.stack
+                    });
+                    statusEl.classList.add('error');
+                    const info = {
+                      error: String((error && error.message)||error),
+                      server: (mcpConfigManager.getServer(name)||{}).url,
+                      hasAuth: !!(mcpConfigManager.getServer(name)||{}).authorization,
+                      stack: error.stack || 'No stack trace'
+                    };
+                    console.error(`MCP server ${name} connection failed:`, info);
+                    const json = JSON.stringify(info, null, 2);
+                    if (window.openJsonModal) { window.openJsonModal(json, '接続テスト 例外（コピー可）'); }
+                    else { alert('接続テスト例外: ' + info.error); }
+                }
+            };
+
+            // ツール一覧（グローバル関数）
+            window.listMcpTools = async function(name){
+                debugLog(`🧰 ツール一覧取得開始: ${name}`);
+                try {
+                    const config = mcpConfigManager.getServer(name);
+                    if (!config) {
+                        const msg = `MCPサーバー設定が見つかりません: ${name}`;
+                        debugLog(`❌ ${msg}`);
+                        alert(msg);
+                        return;
+                    }
+                    // プロキシ経由URLに自動変換
+                    let toolUrl = config.url;
+                    const kamuiCodeUrl = window.KAMUI_CODE_URL;
+                    const kamuiCodeRegex = new RegExp(`^https?://${kamuiCodeUrl}/`, 'i');
+                    if (kamuiCodeRegex.test(toolUrl)) {
+                        const pathPart = toolUrl.replace(kamuiCodeRegex, '');
+                        toolUrl = 'http://localhost:3001/mcp/' + pathPart;
+                        debugLog(`🔄 ツール用URL変換: ${config.url} → ${toolUrl}`);
+                    }
+
+                    const client = new HttpMcpClient(toolUrl, {
+                        authorization: config.authorization,
+                        clientName: 'kamui-web-client',
+                        clientVersion: '1.0.0'
+                    });
+                    window.currentMcpClient = client;
+                    debugLog('🔧 ツール用クライアント初期化中...');
+                    await client.initialize();
+                    debugLog('📋 ツールリスト取得中...');
+                    const tools = await client.listTools();
+                    debugLog('📋 ツールリスト取得完了:', tools);
+                    const payload = (tools && tools.result) || tools;
+                    const json = JSON.stringify(payload, null, 2);
+                    if (window.openJsonModal) { window.openJsonModal(json, '利用可能なツール'); }
+                    else { alert('利用可能なツール:\n' + json); }
+                } catch(err){
+                    debugLog('💥 ツール一覧取得失敗', {
+                        error: err.message,
+                        stack: err.stack
+                    });
+                    const info = {
+                      error: String((err && err.message)||err),
+                      hint: 'セッションIDエラーの場合は自動再初期化し再試行済み',
+                      server: (mcpConfigManager.getServer(name)||{}).url,
+                      hasAuth: !!(mcpConfigManager.getServer(name)||{}).authorization,
+                      sessionId: ((window.currentMcpClient && window.currentMcpClient.sessionId)||null),
+                      debug: ((window.currentMcpClient && window.currentMcpClient.getDebugInfo ? window.currentMcpClient.getDebugInfo() : null)),
+                      advice: 'プロキシ経由URL（http://localhost:3001/mcp/...）の利用、レスポンスヘッダ mcp-session-id の有無確認'
+                    };
+                    const json = JSON.stringify(info, null, 2);
+                    console.error('listTools failed', info);
+                    if (window.openJsonModal) { window.openJsonModal(json, 'ツール一覧 取得エラー（コピー可）'); }
+                    else { alert('ツール一覧の取得に失敗しました:\n' + json); }
+                }
+            };
+
+            // 画像生成（未使用UI）は削除済み
+
+            // 生成画像を結果グリッドに追加
+            function addGeneratedImage(imageUrl, prompt) {
+                const resultGrid = byId('resultGrid');
+                if (!resultGrid) return;
+
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
+                resultItem.innerHTML = `
+                    <img src="${imageUrl}" alt="${prompt}" loading="lazy">
+                    <div class="result-actions">
+                        <button class="result-action-btn" onclick="useAsReference('${imageUrl}')" title="リファレンスとして使用">📌</button>
+                        <button class="result-action-btn" onclick="downloadImage('${imageUrl}')" title="ダウンロード">💾</button>
+                    </div>
+                `;
+
+                // 画像クリックで Before エリアに設定
+                resultItem.addEventListener('click', function() {
+                    const beforeImg = qs('#beforeImage img');
+                    if (beforeImg) {
+                        beforeImg.src = imageUrl;
+                        beforeImg.alt = prompt;
+                    }
+                });
+
+                resultGrid.insertBefore(resultItem, resultGrid.firstChild);
+                // Afterプレビューを即時更新
+                setAfterImage(imageUrl);
+            }
+
+            // リファレンスとして使用（グローバル関数）
+            window.useAsReference = function(imageUrl) {
+                const beforeImg = qs('#beforeImage img');
+                if (beforeImg) {
+                    beforeImg.src = imageUrl;
+                    beforeImg.alt = 'Generated reference';
+                }
+            };
+
+            function setAfterImage(url){
+                const after = byId('afterImage');
+                if (!after) return;
+                after.innerHTML = `<img src="${url}" alt="Generated result" style="width:100%;height:100%;object-fit:cover;">`;
+            }
+
+            async function localGenerateFromBefore({ prompt, model, size }){
+                // シンプルなローカル擬似生成: Before画像に色調フィルタと透かしを適用
+                const beforeImg = qs('#beforeImage img');
+                if (!beforeImg) throw new Error('Before画像が見つかりません');
+                await new Promise(r => { if (beforeImg.complete) r(); else beforeImg.onload = r; });
+                const [w,h] = (size||'1024x1024').split('x').map(n=>parseInt(n,10)||512);
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                const ctx = c.getContext('2d');
+                // draw base
+                ctx.drawImage(beforeImg, 0, 0, w, h);
+                // tint by model
+                const tints = { 'flux-ultra':'#00d4aa', 'flux-pro':'#4a9eff', 'midjourney':'#a855f7' };
+                ctx.fillStyle = (tints[model]||'#4a9eff') + '55';
+                ctx.fillRect(0,0,w,h);
+                // add prompt watermark
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(0,h-64,w,64);
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 20px system-ui, sans-serif';
+                const text = (prompt||'').slice(0,120);
+                ctx.fillText(text, 16, h-24);
+                return c.toDataURL('image/png');
+            }
+
+            // 画像ダウンロード（グローバル関数）
+            window.downloadImage = function(imageUrl) {
+                const link = document.createElement('a');
+                link.href = imageUrl;
+                link.download = `generated-image-${Date.now()}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            // MCP初期化
+            initializeMcpConfig();
+
+            // Function to load images into reference grid
+            function loadImages() {
+                const referenceGrid = byId('referenceGrid');
+                referenceGrid.innerHTML = ''; // Clear existing images
+
+                allImages.forEach((imageName, index) => {
+                    const referenceItem = document.createElement('div');
+                    referenceItem.className = 'reference-item';
+
+                    // Select first few items by default for demo
+                    if (index % 3 === 0) {
+                        referenceItem.classList.add('selected');
+                    }
+
+                    // Create readable alt text from filename
+                    const altText = imageName
+                        .replace(/\.(png|jpg|jpeg|gif)$/i, '')
+                        .replace(/[-_]/g, ' ')
+                        .replace(/\b\w/g, char => char.toUpperCase());
+
+                    // /images 以下の自動表示は廃止
+                    referenceItem.innerHTML = `
+                        <img src="" alt="${altText}">
+                        <div class="checkmark">✓</div>
+                    `;
+
+                    referenceGrid.appendChild(referenceItem);
+                });
+
+                // Re-attach click event listeners
+                qsa('.reference-item').forEach(item => {
+                    // Left click - update Before image
+                    item.addEventListener('click', function(e) {
+                        e.preventDefault();
+
+                        // Toggle selection
+                        this.classList.toggle('selected');
+
+                        // Update Before image
+                        const img = this.querySelector('img');
+                        if (img) {
+                            const beforeImg = qs('#beforeImage img');
+                            if (beforeImg) {
+                                beforeImg.src = img.src;
+                                beforeImg.alt = img.alt;
+                            }
+                        }
+                        updateInputTray();
+                    });
+
+                    // Right click - show context menu with relative path
+                    item.addEventListener('contextmenu', function(e) {
+                        e.preventDefault();
+
+                        const img = this.querySelector('img');
+                        if (img) {
+                            // そのままのURLを表示（/images などの相対化は行わない）
+                            const src = img.src;
+                            const relativePath = src;
+
+                            // Remove existing context menu if any
+                            const existingMenu = document.querySelector('.context-menu');
+                            if (existingMenu) {
+                                existingMenu.remove();
+                            }
+
+                            // Create context menu
+                            const menu = document.createElement('div');
+                            menu.className = 'context-menu';
+                            menu.style.cssText = `
+                                position: fixed;
+                                left: ${e.clientX}px;
+                                top: ${e.clientY}px;
+                                background: #2a2a2a;
+                                border: 1px solid #444;
+                                border-radius: 4px;
+                                padding: 8px 12px;
+                                color: #e0e0e0;
+                                font-size: 12px;
+                                z-index: 1000;
+                                cursor: pointer;
+                                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                            `;
+                            menu.textContent = relativePath;
+                            menu.title = 'Click to copy';
+
+                            // Copy on click
+                            menu.addEventListener('click', function() {
+                                navigator.clipboard.writeText(relativePath).then(() => {
+                                    menu.textContent = '✅ Copied!';
+                                    setTimeout(() => {
+                                        menu.remove();
+                                    }, 1000);
+                                }).catch(err => {
+                                    console.error('Failed to copy:', err);
+                                    menu.textContent = '❌ Copy failed';
+                                });
+                            });
+
+                            document.body.appendChild(menu);
+
+                            // Remove menu when clicking elsewhere
+                            const removeMenu = (e) => {
+                                if (!menu.contains(e.target)) {
+                                    menu.remove();
+                                    document.removeEventListener('click', removeMenu);
+                                }
+                            };
+                            setTimeout(() => {
+                                document.addEventListener('click', removeMenu);
+                            }, 0);
+                        }
+                    });
+                });
+                updateInputTray();
+            }
+
+            // /images 以下の一括表示・読み込みは廃止（ギャラリー/外部URL/ファイル追加のみを使用）
+
+            // Drawing functionality
+            const canvas = byId('drawingCanvas');
+            const ctx = canvas ? canvas.getContext('2d') : null;
+            if (canvas && ctx) {
+                let isDrawing = false;
+                let drawingEnabled = false;
+                let textMode = false;
+                let lastSavedDrawing = null;
+                let eraserEnabled = false;
+                let isErasing = false;
+                let currentPenColor = '#ff0000';
+                let currentPenSize = 3;
+                let currentTextSize = 24;
+                let currentEraserSize = 40;
+                let canvasSnapshotUrl = null;
+
+                const toggleDrawBtn = byId('toggleDraw');
+                const clearCanvasBtn = byId('clearCanvas');
+                const switchImagesBtn = byId('switchImages');
+                const saveDrawingBtn = byId('saveDrawing');
+                const penColorInput = byId('penColor');
+                const penSizeInput = byId('penSize');
+                const penSizeLabel = byId('penSizeLabel');
+                const textInput = byId('textInput');
+                const textSizeInput = byId('textSize');
+                const textSizeLabel = byId('textSizeLabel');
+                const placeTextBtn = byId('placeTextBtn');
+                const eraserSizeInput = byId('eraserSize');
+                const eraserSizeLabel = byId('eraserSizeLabel');
+                const toggleEraserBtn = byId('toggleEraser');
+
+                const rememberCanvas = () => {
+                    try {
+                        if (canvas.width > 0 && canvas.height > 0) {
+                            canvasSnapshotUrl = canvas.toDataURL('image/png');
+                        }
+                    } catch (_) { /* ignore */ }
+                };
+
+                const restoreCanvas = (snapshot) => {
+                    if (!snapshot) return;
+                    const img = new Image();
+                    img.onload = () => {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        rememberCanvas();
+                    };
+                    img.src = snapshot;
+                };
+
+                const updatePenSizeLabel = (value) => {
+                    if (penSizeLabel) penSizeLabel.textContent = value + ' px';
+                };
+
+                const updateTextSizeLabel = (value) => {
+                    if (textSizeLabel) textSizeLabel.textContent = value + ' px';
+                };
+
+                const updateEraserSizeLabel = (value) => {
+                    if (eraserSizeLabel) eraserSizeLabel.textContent = value + ' px';
+                };
+
+                const applyDrawingStyles = () => {
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.strokeStyle = currentPenColor;
+                    ctx.lineWidth = currentPenSize;
+                };
+
+                const syncCanvasVisibility = () => {
+                    canvas.style.display = (drawingEnabled || textMode || eraserEnabled) ? 'block' : 'none';
+                };
+
+                const setCanvasCursor = () => {
+                    if (textMode) {
+                        canvas.style.cursor = 'text';
+                    } else if (eraserEnabled) {
+                        canvas.style.cursor = 'cell';
+                    } else if (drawingEnabled) {
+                        canvas.style.cursor = 'crosshair';
+                    } else {
+                        canvas.style.cursor = 'default';
+                    }
+                };
+
+                const resizeCanvasToImage = () => {
+                    const imgEl = qs('#beforeImage img');
+                    if (!imgEl) return;
+                    const snapshot = canvasSnapshotUrl || (canvas.width > 0 && canvas.height > 0 ? canvas.toDataURL('image/png') : null);
+                    const w = imgEl.clientWidth || 300;
+                    const h = imgEl.clientHeight || 300;
+                    if (w > 0 && h > 0) {
+                        canvas.width = w;
+                        canvas.height = h;
+                        applyDrawingStyles();
+                        if (snapshot) {
+                            restoreCanvas(snapshot);
+                        } else {
+                            rememberCanvas();
+                        }
+                    }
+                };
+
+                const exitTextMode = () => {
+                    textMode = false;
+                    if (placeTextBtn) {
+                        placeTextBtn.classList.remove('active');
+                        placeTextBtn.textContent = '🅣 テキスト配置';
+                    }
+                };
+
+                const exitEraserMode = () => {
+                    eraserEnabled = false;
+                    isErasing = false;
+                    if (toggleEraserBtn) {
+                        toggleEraserBtn.classList.remove('active');
+                        toggleEraserBtn.textContent = '🧽 Eraser';
+                        toggleEraserBtn.style.background = '#3a3a3a';
+                    }
+                };
+
+                const getPos = (src) => {
+                    const rect = canvas.getBoundingClientRect();
+                    let point = src;
+                    if (src.touches && src.touches.length) {
+                        point = src.touches[0];
+                    }
+                    return {
+                        x: ((point.clientX - rect.left) / rect.width) * canvas.width,
+                        y: ((point.clientY - rect.top) / rect.height) * canvas.height
+                    };
+                };
+
+                const placeTextAt = (evt) => {
+                    const text = textInput ? textInput.value.trim() : '';
+                    if (!text) {
+                        if (textInput) textInput.focus();
+                        return;
+                    }
+                    const pos = getPos(evt);
+                    ctx.save();
+                    ctx.fillStyle = currentPenColor;
+                    ctx.font = `${currentTextSize}px "Segoe UI", Helvetica, Arial, sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(text, pos.x, pos.y);
+                    ctx.restore();
+                    rememberCanvas();
+                };
+
+                updatePenSizeLabel(currentPenSize);
+                updateTextSizeLabel(currentTextSize);
+                updateEraserSizeLabel(currentEraserSize);
+                applyDrawingStyles();
+                syncCanvasVisibility();
+                setCanvasCursor();
+                rememberCanvas();
+
+                if (penColorInput) {
+                    penColorInput.addEventListener('input', (event) => {
+                        currentPenColor = event.target.value;
+                        applyDrawingStyles();
+                    });
+                }
+
+                if (penSizeInput) {
+                    penSizeInput.addEventListener('input', (event) => {
+                        currentPenSize = Math.max(1, Number(event.target.value) || 1);
+                        updatePenSizeLabel(currentPenSize);
+                        applyDrawingStyles();
+                    });
+                }
+
+                if (textSizeInput) {
+                    textSizeInput.addEventListener('input', (event) => {
+                        currentTextSize = Math.max(8, Number(event.target.value) || 24);
+                        updateTextSizeLabel(currentTextSize);
+                    });
+                }
+
+                if (eraserSizeInput) {
+                    eraserSizeInput.addEventListener('input', (event) => {
+                        currentEraserSize = Math.max(8, Number(event.target.value) || 40);
+                        updateEraserSizeLabel(currentEraserSize);
+                    });
+                }
+
+                if (toggleDrawBtn) {
+                    toggleDrawBtn.addEventListener('click', () => {
+                        drawingEnabled = !drawingEnabled;
+                        if (drawingEnabled) {
+                            exitTextMode();
+                            exitEraserMode();
+                            setTimeout(resizeCanvasToImage, 0);
+                        }
+                        toggleDrawBtn.textContent = drawingEnabled ? '🖊️ Drawing' : '✏️ Draw';
+                        toggleDrawBtn.style.background = drawingEnabled ? '#4a9eff' : '#3a3a3a';
+                        toggleDrawBtn.classList.toggle('active', drawingEnabled);
+                        syncCanvasVisibility();
+                        setCanvasCursor();
+                    });
+                }
+
+                if (toggleEraserBtn) {
+                    toggleEraserBtn.addEventListener('click', () => {
+                        eraserEnabled = !eraserEnabled;
+                        if (eraserEnabled) {
+                            drawingEnabled = false;
+                            exitTextMode();
+                            if (toggleDrawBtn) {
+                                toggleDrawBtn.textContent = '✏️ Draw';
+                                toggleDrawBtn.style.background = '#3a3a3a';
+                                toggleDrawBtn.classList.remove('active');
+                            }
+                            setTimeout(resizeCanvasToImage, 0);
+                        } else {
+                            isErasing = false;
+                        }
+                        toggleEraserBtn.classList.toggle('active', eraserEnabled);
+                        toggleEraserBtn.textContent = eraserEnabled ? '🧽 Erasing' : '🧽 Eraser';
+                        toggleEraserBtn.style.background = eraserEnabled ? '#4a9eff' : '#3a3a3a';
+                        syncCanvasVisibility();
+                        setCanvasCursor();
+                    });
+                }
+
+                if (placeTextBtn) {
+                    placeTextBtn.addEventListener('click', () => {
+                        textMode = !textMode;
+                        if (textMode) {
+                            drawingEnabled = false;
+                            exitEraserMode();
+                            if (toggleDrawBtn) {
+                                toggleDrawBtn.textContent = '✏️ Draw';
+                                toggleDrawBtn.style.background = '#3a3a3a';
+                                toggleDrawBtn.classList.remove('active');
+                            }
+                            setTimeout(resizeCanvasToImage, 0);
+                        }
+                        placeTextBtn.classList.toggle('active', textMode);
+                        placeTextBtn.textContent = textMode ? '🅣 テキスト配置中' : '🅣 テキスト配置';
+                        syncCanvasVisibility();
+                        setCanvasCursor();
+                    });
+                }
+
+                if (clearCanvasBtn) {
+                    clearCanvasBtn.addEventListener('click', () => {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        rememberCanvas();
+                    });
+                }
+
+                if (switchImagesBtn) {
+                    switchImagesBtn.addEventListener('click', () => {
+                        const beforeImg = qs('#beforeImage img');
+                        const afterImg = qs('#afterImage img');
+                        if (!beforeImg || !afterImg) return;
+                        const tempSrc = beforeImg.src;
+                        const tempAlt = beforeImg.alt;
+                        beforeImg.src = afterImg.src;
+                        beforeImg.alt = afterImg.alt;
+                        afterImg.src = tempSrc;
+                        afterImg.alt = tempAlt;
+                    });
+                }
+
+                if (saveDrawingBtn) {
+                    saveDrawingBtn.addEventListener('click', () => {
+                        const beforeImg = qs('#beforeImage img');
+                        if (!beforeImg) return;
+
+                        const combinedCanvas = document.createElement('canvas');
+                        const combinedCtx = combinedCanvas.getContext('2d');
+                        combinedCanvas.width = 300;
+                        combinedCanvas.height = 300;
+
+                        const img = new Image();
+                        img.crossOrigin = 'anonymous';
+
+                        img.onload = function() {
+                            combinedCtx.drawImage(img, 0, 0, 300, 300);
+                            combinedCtx.drawImage(canvas, 0, 0);
+
+                            const dataURL = combinedCanvas.toDataURL('image/png');
+                            const timestamp = Date.now();
+                            const filename = 'hand-drawn-' + timestamp + '.png';
+
+                            const referenceGrid = qs('.reference-grid');
+                            if (referenceGrid) {
+                                const newReferenceItem = document.createElement('div');
+                                newReferenceItem.className = 'reference-item selected';
+                                newReferenceItem.innerHTML = `
+                                    <img src="${dataURL}" alt="Hand Drawn">
+                                    <div class="checkmark">✓</div>
+                                `;
+
+                                newReferenceItem.addEventListener('click', function(e) {
+                                    e.preventDefault();
+                                    this.classList.toggle('selected');
+                                    const imgEl = this.querySelector('img');
+                                    if (imgEl) {
+                                        const before = qs('#beforeImage img');
+                                        if (before) {
+                                            before.src = imgEl.src;
+                                            before.alt = imgEl.alt;
+                                        }
+                                    }
+                                });
+
+                                newReferenceItem.addEventListener('contextmenu', function(e) {
+                                    e.preventDefault();
+                                    const relativePath = '/' + filename;
+                                    const existingMenu = document.querySelector('.context-menu');
+                                    if (existingMenu) existingMenu.remove();
+
+                                    const menu = document.createElement('div');
+                                    menu.className = 'context-menu';
+                                    menu.style.cssText = `
+                                        position: fixed;
+                                        left: ${e.clientX}px;
+                                        top: ${e.clientY}px;
+                                        background: #2a2a2a;
+                                        border: 1px solid #444;
+                                        border-radius: 4px;
+                                        padding: 8px 12px;
+                                        color: #e0e0e0;
+                                        font-size: 12px;
+                                        z-index: 1000;
+                                        cursor: pointer;
+                                        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                                    `;
+                                    menu.textContent = relativePath;
+                                    menu.title = 'Click to copy';
+
+                                    menu.addEventListener('click', function() {
+                                        navigator.clipboard.writeText(relativePath).then(() => {
+                                            menu.textContent = '✅ Copied!';
+                                            setTimeout(() => menu.remove(), 1000);
+                                        }).catch(err => {
+                                            console.error('Failed to copy:', err);
+                                            menu.textContent = '❌ Copy failed';
+                                        });
+                                    });
+
+                                    document.body.appendChild(menu);
+                                    const removeMenu = (evt) => {
+                                        if (!menu.contains(evt.target)) {
+                                            menu.remove();
+                                            document.removeEventListener('click', removeMenu);
+                                        }
+                                    };
+                                    setTimeout(() => document.addEventListener('click', removeMenu), 0);
+                                });
+
+                                referenceGrid.appendChild(newReferenceItem);
+                            }
+
+                            lastSavedDrawing = dataURL;
+
+                            combinedCanvas.toBlob(function(blob) {
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = filename;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                URL.revokeObjectURL(url);
+                            }, 'image/png');
+
+                            const originalText = saveDrawingBtn.textContent;
+                            saveDrawingBtn.textContent = '✅ Saved & Added!';
+                            saveDrawingBtn.style.background = '#4CAF50';
+                            setTimeout(() => {
+                                saveDrawingBtn.textContent = originalText;
+                                saveDrawingBtn.style.background = '#3a3a3a';
+                            }, 2000);
+                        };
+
+                        img.src = beforeImg.src;
+                    });
+                }
+
+                window.addEventListener('resize', () => {
+                    if (drawingEnabled || textMode) {
+                        resizeCanvasToImage();
+                    }
+                });
+
+                canvas.addEventListener('pointerdown', (e) => {
+                    if (textMode) {
+                        placeTextAt(e);
+                        return;
+                    }
+                    if (!drawingEnabled && !eraserEnabled) return;
+                    isDrawing = true;
+                    isErasing = eraserEnabled;
+                    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+                    const pos = getPos(e);
+                    ctx.beginPath();
+                    ctx.moveTo(pos.x, pos.y);
+                    if (isErasing) {
+                        ctx.save();
+                        ctx.globalCompositeOperation = 'destination-out';
+                        ctx.lineWidth = currentEraserSize;
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        ctx.lineTo(pos.x, pos.y);
+                        ctx.stroke();
+                        ctx.restore();
+                        ctx.beginPath();
+                        ctx.moveTo(pos.x, pos.y);
+                    }
+                    e.preventDefault();
+                });
+
+                canvas.addEventListener('pointermove', (e) => {
+                    if (!isDrawing) return;
+                    const pos = getPos(e);
+                    if (isErasing) {
+                        ctx.save();
+                        ctx.globalCompositeOperation = 'destination-out';
+                        ctx.lineWidth = currentEraserSize;
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        ctx.lineTo(pos.x, pos.y);
+                        ctx.stroke();
+                        ctx.restore();
+                        ctx.beginPath();
+                        ctx.moveTo(pos.x, pos.y);
+                    } else if (drawingEnabled) {
+                        ctx.strokeStyle = currentPenColor;
+                        ctx.lineWidth = currentPenSize;
+                        ctx.lineTo(pos.x, pos.y);
+                        ctx.stroke();
+                    }
+                    e.preventDefault();
+                });
+
+                const stopDraw = (e) => {
+                    if (!isDrawing) return;
+                    isDrawing = false;
+                    isErasing = false;
+                    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+                    rememberCanvas();
+                };
+
+                canvas.addEventListener('pointerup', stopDraw);
+                canvas.addEventListener('pointercancel', stopDraw);
+                canvas.addEventListener('pointerleave', stopDraw);
+
+                if (!('onpointerdown' in window)) {
+                    const opts = { passive: false };
+                    canvas.addEventListener('touchstart', (e) => {
+                        if (textMode) {
+                            placeTextAt(e);
+                            e.preventDefault();
+                            return;
+                        }
+                        if (!drawingEnabled && !eraserEnabled) return;
+                        isDrawing = true;
+                        isErasing = eraserEnabled;
+                        ctx.beginPath();
+                        const pos = getPos(e);
+                        ctx.moveTo(pos.x, pos.y);
+                        if (isErasing) {
+                            ctx.save();
+                            ctx.globalCompositeOperation = 'destination-out';
+                            ctx.lineWidth = currentEraserSize;
+                            ctx.lineCap = 'round';
+                            ctx.lineJoin = 'round';
+                            ctx.lineTo(pos.x, pos.y);
+                            ctx.stroke();
+                            ctx.restore();
+                            ctx.beginPath();
+                            ctx.moveTo(pos.x, pos.y);
+                        }
+                        e.preventDefault();
+                    }, opts);
+                    canvas.addEventListener('touchmove', (e) => {
+                        if (!isDrawing) return;
+                        const pos = getPos(e);
+                        if (isErasing) {
+                            ctx.save();
+                            ctx.globalCompositeOperation = 'destination-out';
+                            ctx.lineWidth = currentEraserSize;
+                            ctx.lineCap = 'round';
+                            ctx.lineJoin = 'round';
+                            ctx.lineTo(pos.x, pos.y);
+                            ctx.stroke();
+                            ctx.restore();
+                            ctx.beginPath();
+                            ctx.moveTo(pos.x, pos.y);
+                        } else if (drawingEnabled) {
+                            ctx.strokeStyle = currentPenColor;
+                            ctx.lineWidth = currentPenSize;
+                            ctx.lineTo(pos.x, pos.y);
+                            ctx.stroke();
+                        }
+                        e.preventDefault();
+                    }, opts);
+                    const end = () => {
+                        if (!isDrawing) return;
+                        isDrawing = false;
+                        isErasing = false;
+                        rememberCanvas();
+                    };
+                    canvas.addEventListener('touchend', end);
+                    canvas.addEventListener('touchcancel', end);
+                }
+            }
+
+        // ===== スマホ用デバッグ表示機能 =====
+        function debugLog(message, data = null) {
+            const debugOutput = byId('debugOutput');
+            if (!debugOutput) return;
+
+            const timestamp = new Date().toLocaleTimeString();
+            let logEntry = `[${timestamp}] ${message}`;
+            if (data !== null) {
+                logEntry += '\n' + JSON.stringify(data, null, 2);
+            }
+
+            // 既存のログに追加
+            const currentContent = debugOutput.innerHTML;
+            const cc = (currentContent || '').replace(/\s+/g, ' ').trim();
+            if (cc === '' || cc.includes('デバッグ情報がここに表示されます') || cc.includes('クリアしました')) {
+                debugOutput.innerHTML = logEntry;
+            } else {
+                debugOutput.innerHTML = currentContent + '\n\n' + logEntry;
+            }
+
+            // スクロールを下に移動
+            debugOutput.scrollTop = debugOutput.scrollHeight;
+        }
+
+        // グローバルに公開
+        window.debugLog = debugLog;
+
+        // エラーハンドリング強化
+        window.addEventListener('error', function(event) {
+            debugLog('❌ JavaScript Error:', {
+                message: event.message,
+                filename: event.filename,
+                lineno: event.lineno,
+                colno: event.colno,
+                error: event.error ? event.error.stack : 'No stack trace'
+            });
+        });
+
+        window.addEventListener('unhandledrejection', function(event) {
+            debugLog('❌ Unhandled Promise Rejection:', {
+                reason: event.reason,
+                promise: event.promise
+            });
+        });
+    });
+    </script>
