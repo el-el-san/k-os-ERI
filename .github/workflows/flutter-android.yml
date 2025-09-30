@@ -57,17 +57,41 @@ jobs:
       - name: Run widget tests
         run: flutter test
 
+      - name: Generate version info
+        id: version
+        run: |
+          # ビルド番号を生成（GitHub run number + 1000ベース）
+          BUILD_NUMBER=$((1000 + ${{ github.run_number }}))
+          # バージョン名を生成（日付ベース: 0.YYMMDD.HH）
+          VERSION_NAME="0.$(date -u +%y%m%d).$(date -u +%H)"
+          echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "Generated Version: $VERSION_NAME+$BUILD_NUMBER"
+
       - name: Build Android APK (release)
-        run: flutter build apk --release
+        run: |
+          flutter build apk --release \
+            --build-number=${{ steps.version.outputs.build_number }} \
+            --build-name=${{ steps.version.outputs.version_name }}
+
+      - name: Rename APK with version
+        run: |
+          APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+          NEW_NAME="direct-drawing-generator-${{ steps.version.outputs.version_name }}+${{ steps.version.outputs.build_number }}.apk"
+          if [ -f "$APK_PATH" ]; then
+            cp "$APK_PATH" "build/app/outputs/flutter-apk/$NEW_NAME"
+            echo "Created: $NEW_NAME"
+            ls -lh "build/app/outputs/flutter-apk/$NEW_NAME"
+          fi
 
       - name: Inspect APK outputs
-        run: find build/app/outputs -maxdepth 3 -type f -name '*.apk'
+        run: find build/app/outputs -maxdepth 3 -type f -name '*.apk' -exec ls -lh {} \;
 
       - name: Upload APK artifact
         if: success()
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: direct-drawing-apk
+          name: direct-drawing-apk-${{ steps.version.outputs.version_name }}-build${{ steps.version.outputs.build_number }}
           path: flutter/direct_drawing_generator/build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
