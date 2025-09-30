@@ -68,24 +68,41 @@ jobs:
           echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "Generated Version: $VERSION_NAME+$BUILD_NUMBER"
 
+      - name: Update pubspec.yaml with version
+        run: |
+          VERSION="${{ steps.version.outputs.version_name }}+${{ steps.version.outputs.build_number }}"
+          echo "Updating pubspec.yaml version to: $VERSION"
+          sed -i "s/^version: .*/version: $VERSION/" pubspec.yaml
+          echo "Updated pubspec.yaml:"
+          grep "^version:" pubspec.yaml
+
       - name: Build Android APK (release)
         run: |
           flutter build apk --release \
             --build-number=${{ steps.version.outputs.build_number }} \
             --build-name=${{ steps.version.outputs.version_name }}
 
-      - name: Rename APK with version
+      - name: Rename APK and cleanup
         run: |
           APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
           NEW_NAME="direct-drawing-generator-${{ steps.version.outputs.version_name }}+${{ steps.version.outputs.build_number }}.apk"
+
+          # Rename the main APK
           if [ -f "$APK_PATH" ]; then
             mv "$APK_PATH" "build/app/outputs/flutter-apk/$NEW_NAME"
             echo "Created: $NEW_NAME"
             ls -lh "build/app/outputs/flutter-apk/$NEW_NAME"
           fi
 
+          # Remove duplicate APKs from other directories to avoid confusion
+          echo "Cleaning up duplicate APKs..."
+          rm -f build/app/outputs/apk/release/*.apk
+          echo "Cleanup complete"
+
       - name: Inspect APK outputs
-        run: find build/app/outputs -maxdepth 3 -type f -name '*.apk' -exec ls -lh {} \;
+        run: |
+          echo "Final APK files:"
+          find build/app/outputs -maxdepth 3 -type f -name '*.apk' -exec ls -lh {} \;
 
       - name: Upload APK artifact
         if: success()
