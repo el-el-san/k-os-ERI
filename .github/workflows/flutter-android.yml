@@ -79,7 +79,7 @@ jobs:
           APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
           NEW_NAME="direct-drawing-generator-${{ steps.version.outputs.version_name }}+${{ steps.version.outputs.build_number }}.apk"
           if [ -f "$APK_PATH" ]; then
-            cp "$APK_PATH" "build/app/outputs/flutter-apk/$NEW_NAME"
+            mv "$APK_PATH" "build/app/outputs/flutter-apk/$NEW_NAME"
             echo "Created: $NEW_NAME"
             ls -lh "build/app/outputs/flutter-apk/$NEW_NAME"
           fi
@@ -93,5 +93,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: direct-drawing-apk-${{ steps.version.outputs.version_name }}-build${{ steps.version.outputs.build_number }}
-          path: flutter/direct_drawing_generator/build/app/outputs/flutter-apk/*.apk
+          path: flutter/direct_drawing_generator/build/app/outputs/flutter-apk/direct-drawing-generator-*.apk
           if-no-files-found: error

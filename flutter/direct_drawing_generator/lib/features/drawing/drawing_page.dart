@@ -214,6 +214,31 @@ class _DrawingPageState extends State<DrawingPage> {
                 fit: BoxFit.cover,
                 height: 160,
                 width: double.infinity,
+                errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                  debugPrint('❌ 画像表示エラー: $error');
+                  return Container(
+                    height: 160,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xffff4d5a)),
+                      color: const Color(0xff121821),
+                    ),
+                    alignment: Alignment.center,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        const Icon(Icons.error, color: Color(0xffff4d5a)),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Error: ${error.toString()}',
+                          style: const TextStyle(color: Color(0xffff4d5a), fontSize: 11),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             )
           else
@@ -494,6 +519,17 @@ class _DrawingPageState extends State<DrawingPage> {
       return;
     }
 
+    // MCP設定確認ダイアログを表示
+    final bool? confirmed = await _showMcpInfoDialog(
+      title: 'Nano Banana Edit',
+      serverName: 'Nano Banana',
+      defaultUrl: 'http://localhost:3001/mcp/i2i/fal/nano-banana/v1',
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
     try {
       await controller.generateWithNanoBanana(
         prompt: prompt,
@@ -512,6 +548,17 @@ class _DrawingPageState extends State<DrawingPage> {
       return;
     }
 
+    // MCP設定確認ダイアログを表示
+    final bool? confirmed = await _showMcpInfoDialog(
+      title: 'Seedream Edit',
+      serverName: 'Seedream',
+      defaultUrl: 'http://localhost:3001/mcp/i2i/fal/bytedance/seedream',
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
     try {
       await controller.generateWithSeedream(
         prompt: prompt,
@@ -521,6 +568,112 @@ class _DrawingPageState extends State<DrawingPage> {
     } catch (e) {
       _showSnackBar('画像生成に失敗しました: $e');
     }
+  }
+
+  Future<bool?> _showMcpInfoDialog({
+    required String title,
+    required String serverName,
+    required String defaultUrl,
+  }) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xff1b2430),
+          title: Row(
+            children: <Widget>[
+              const Icon(Icons.info_outline, color: Color(0xff4a9eff)),
+              const SizedBox(width: 8),
+              Text(title),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const Text(
+                  'AI画像生成機能について',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'この機能を使用するには、MCPサーバーが起動している必要があります。',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff0f141b),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xff2b3645)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Text(
+                        '必要な設定:',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xff4a9eff)),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'サーバー: $serverName',
+                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'URL: $defaultUrl',
+                        style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white60),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff2d1f1f),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xff4a2626)),
+                  ),
+                  child: const Row(
+                    children: <Widget>[
+                      Icon(Icons.warning_amber, color: Color(0xfffacc15), size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'サーバーが起動していない場合、エラーが発生します。',
+                          style: TextStyle(fontSize: 12, color: Color(0xfffacc15)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'デバッグログはFlutter DevToolsで確認できます。',
+                  style: TextStyle(fontSize: 12, color: Colors.white54),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xff4a9eff),
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('続行'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _loadResultAsReference(dynamic result) async {
@@ -571,16 +724,37 @@ class _DrawingPageState extends State<DrawingPage> {
 
   Future<void> _pickReferenceImage() async {
     try {
+      debugPrint('🖼️ ファイルピッカーを開始...');
       final FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.image);
-      if (result == null || result.files.isEmpty || result.files.first.bytes == null) {
+
+      if (result == null) {
+        debugPrint('❌ ファイルピッカーがキャンセルされました');
         return;
       }
-      await _controller.loadReferenceImage(result.files.first.bytes!);
-    } catch (error, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('Failed to import image: $error\n$stackTrace');
+
+      if (result.files.isEmpty) {
+        debugPrint('❌ 選択されたファイルがありません');
+        return;
       }
-      _showSnackBar('Could not import image');
+
+      if (result.files.first.bytes == null) {
+        debugPrint('❌ ファイルのバイトデータがnullです');
+        _showSnackBar('画像データの読み込みに失敗しました');
+        return;
+      }
+
+      final int byteLength = result.files.first.bytes!.length;
+      debugPrint('✅ 画像を選択しました: ${result.files.first.name}, サイズ: ${byteLength} bytes');
+
+      await _controller.loadReferenceImage(result.files.first.bytes!);
+      debugPrint('✅ リファレンス画像を読み込みました');
+      _showSnackBar('リファレンス画像を読み込みました');
+    } catch (error, stackTrace) {
+      debugPrint('❌ 画像インポートエラー: $error');
+      if (kDebugMode) {
+        debugPrint('スタックトレース: $stackTrace');
+      }
+      _showSnackBar('画像の読み込みに失敗しました: $error');
     }
   }
 
