@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -60,13 +62,23 @@ jobs:
       - name: Generate version info
         id: version
         run: |
-          # ビルド番号を生成（GitHub run number + 1000ベース）
-          BUILD_NUMBER=$((1000 + ${{ github.run_number }}))
-          # バージョン名を生成（日付ベース: 0.YYMMDD.HH）
-          VERSION_NAME="0.$(date -u +%y%m%d).$(date -u +%H)"
-          echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
-          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
-          echo "Generated Version: $VERSION_NAME+$BUILD_NUMBER"
+          set -euo pipefail
+          RUN_ATTEMPT=${{ github.run_attempt }}
+          BUILD_BASE=$(git rev-list --count HEAD)
+          BUILD_NUMBER=$((BUILD_BASE * 10 + RUN_ATTEMPT))
+          VERSION_STAMP=$(date -u +%Y.%m.%d)
+          VERSION_NAME="0.${VERSION_STAMP}.${BUILD_BASE}"
+
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "Resolved version components"
+            echo "  Commit count (base): $BUILD_BASE"
+            echo "  Run attempt: $RUN_ATTEMPT"
+            echo "  Build number: $BUILD_NUMBER"
+            echo "  Version name: $VERSION_NAME"
+          } | tee version-info.txt
 
       - name: Update pubspec.yaml with version
         run: |
@@ -110,5 +122,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: direct-drawing-apk-${{ steps.version.outputs.version_name }}-build${{ steps.version.outputs.build_number }}
-          path: flutter/direct_drawing_generator/build/app/outputs/flutter-apk/direct-drawing-generator-*.apk
+          path: |
+            flutter/direct_drawing_generator/build/app/outputs/flutter-apk/direct-drawing-generator-*.apk
+            flutter/direct_drawing_generator/version-info.txt
           if-no-files-found: error
