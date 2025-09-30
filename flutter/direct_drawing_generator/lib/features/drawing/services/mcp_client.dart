@@ -246,7 +246,7 @@ class McpClient {
         // 完了したら結果を取得
         return await getResult(requestId: requestId);
       } else if (state == 'ERROR' || state == 'FAILED') {
-        final String? errorMsg = status['error'] as String? ?? 'Unknown error';
+        final String errorMsg = status['error'] as String? ?? 'Unknown error';
         throw Exception('生成に失敗しました: $errorMsg');
       }
 
