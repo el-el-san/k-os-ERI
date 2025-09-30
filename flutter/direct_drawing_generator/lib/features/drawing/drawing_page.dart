@@ -181,6 +181,7 @@ class _DrawingPageState extends State<DrawingPage> {
   Widget _buildControlPanel(BuildContext context, DrawingController controller) {
     final ThemeData theme = Theme.of(context);
     return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -452,41 +453,59 @@ class _DrawingPageState extends State<DrawingPage> {
     final AppSettings settings = controller.settings;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xff18212b),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xff253143)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            '接続先エンドポイント',
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          dividerColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+        ),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          collapsedIconColor: Colors.white54,
+          iconColor: const Color(0xff4a9eff),
+          title: Text(
+            'サーバー接続設定',
             style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70, fontWeight: FontWeight.w600),
           ),
-          const SizedBox(height: 8),
-          _EndpointRow(label: 'Upload', value: settings.uploadEndpoint),
-          _EndpointRow(label: 'Expose', value: settings.exposeEndpoint),
-          _EndpointRow(label: 'Nano Banana', value: settings.nanoBananaEndpoint),
-          _EndpointRow(label: 'Seedream', value: settings.seedreamEndpoint),
-          if ((settings.uploadAuthorization ?? settings.mcpAuthorization) != null) ...<Widget>[
-            const SizedBox(height: 8),
-            if (settings.uploadAuthorization != null)
-              _EndpointRow(label: 'Upload Auth', value: settings.uploadAuthorization!),
-            if (settings.mcpAuthorization != null)
-              _EndpointRow(label: 'MCP Auth', value: settings.mcpAuthorization!),
-          ],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _openServerSettings,
-              icon: const Icon(Icons.settings),
-              label: const Text('サーバー設定を変更'),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              settings.nanoBananaEndpoint,
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ),
-        ],
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          children: <Widget>[
+            _EndpointRow(label: 'Upload', value: settings.uploadEndpoint),
+            _EndpointRow(label: 'Expose', value: settings.exposeEndpoint),
+            _EndpointRow(label: 'Nano Banana', value: settings.nanoBananaEndpoint),
+            _EndpointRow(label: 'Seedream', value: settings.seedreamEndpoint),
+            if ((settings.uploadAuthorization ?? settings.mcpAuthorization) != null) ...<Widget>[
+              const SizedBox(height: 8),
+              if (settings.uploadAuthorization != null)
+                _EndpointRow(label: 'Upload Auth', value: settings.uploadAuthorization!),
+              if (settings.mcpAuthorization != null)
+                _EndpointRow(label: 'MCP Auth', value: settings.mcpAuthorization!),
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _openServerSettings,
+                icon: const Icon(Icons.settings),
+                label: const Text('サーバー設定を変更'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
