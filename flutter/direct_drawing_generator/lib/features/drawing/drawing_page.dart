@@ -1026,8 +1026,8 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: const Color(0xff1b2430),
-      title: Row(
-        children: const <Widget>[
+      title: const Row(
+        children: <Widget>[
           Icon(Icons.settings, color: Color(0xff4a9eff)),
           SizedBox(width: 8),
           Text('サーバー設定'),
