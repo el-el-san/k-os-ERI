@@ -744,7 +744,7 @@ class _DrawingPageState extends State<DrawingPage> {
       }
 
       final int byteLength = result.files.first.bytes!.length;
-      debugPrint('✅ 画像を選択しました: ${result.files.first.name}, サイズ: ${byteLength} bytes');
+      debugPrint('✅ 画像を選択しました: ${result.files.first.name}, サイズ: $byteLength bytes');
 
       await _controller.loadReferenceImage(result.files.first.bytes!);
       debugPrint('✅ リファレンス画像を読み込みました');
