@@ -55,11 +55,11 @@ jobs:
           chmod 600 "$KEYSTORE_PATH"
 
           cat > "$KEY_PROPS" <<EOF
-storeFile=../app/update-signing.keystore
-storePassword=koseri123
-keyAlias=koseri
-keyPassword=koseri123
-EOF
+            storeFile=../app/update-signing.keystore
+            storePassword=koseri123
+            keyAlias=koseri
+            keyPassword=koseri123
+          EOF
 
           ls -l "$KEYSTORE_PATH"
 
