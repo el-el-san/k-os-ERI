@@ -66,7 +66,7 @@ jobs:
           RUN_ATTEMPT=${{ github.run_attempt }}
           BUILD_BASE=$(git rev-list --count HEAD)
           BUILD_NUMBER=$((BUILD_BASE * 10 + RUN_ATTEMPT))
-          VERSION_STAMP=$(date -u +%Y.%m.%d)
+          VERSION_STAMP=$(date -u +%Y%m%d)
           VERSION_NAME="0.${VERSION_STAMP}.${BUILD_BASE}"
 
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
