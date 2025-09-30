@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'drawing_controller.dart';
 import 'models/drawing_mode.dart';
+import 'models/generation_state.dart';
 import 'widgets/drawing_canvas.dart';
 
 class DrawingPage extends StatefulWidget {
@@ -25,6 +26,7 @@ class DrawingPage extends StatefulWidget {
 class _DrawingPageState extends State<DrawingPage> {
   late final DrawingController _controller;
   final TextEditingController _textController = TextEditingController();
+  final TextEditingController _promptController = TextEditingController();
   final GlobalKey _repaintBoundaryKey = GlobalKey();
   bool _isSaving = false;
 
@@ -49,6 +51,7 @@ class _DrawingPageState extends State<DrawingPage> {
   void dispose() {
     _controller.dispose();
     _textController.dispose();
+    _promptController.dispose();
     super.dispose();
   }
 
@@ -306,6 +309,102 @@ class _DrawingPageState extends State<DrawingPage> {
             ),
           ),
           const SizedBox(height: 24),
+          Text('AI Image Generation', style: theme.textTheme.titleMedium?.copyWith(color: Colors.white70)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _promptController,
+            maxLines: 3,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: '編集したい内容（例: 色味を暖色に、肌をなめらかに、背景を夕景に など）',
+              hintStyle: const TextStyle(color: Colors.white38),
+              filled: true,
+              fillColor: const Color(0xff18212b),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xff253143)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xff3b82f6)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xffa855f7),
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  onPressed: controller.generationState == GenerationState.idle || controller.generationState == GenerationState.completed || controller.generationState == GenerationState.error
+                      ? () => _generateWithNanoBanana(controller)
+                      : null,
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('Nano Banana'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xff4a9eff),
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  onPressed: controller.generationState == GenerationState.idle || controller.generationState == GenerationState.completed || controller.generationState == GenerationState.error
+                      ? () => _generateWithSeedream(controller)
+                      : null,
+                  icon: const Icon(Icons.auto_fix_high),
+                  label: const Text('Seedream'),
+                ),
+              ),
+            ],
+          ),
+          if (controller.generationState != GenerationState.idle) ...<Widget>[
+            const SizedBox(height: 12),
+            _buildGenerationStatus(controller),
+          ],
+          if (controller.generationResults.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 16),
+            Text('Generated Results', style: theme.textTheme.titleMedium?.copyWith(color: Colors.white70)),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 120,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: controller.generationResults.length,
+                itemBuilder: (BuildContext context, int index) {
+                  final result = controller.generationResults[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () => _loadResultAsReference(result),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          result.imageUrl,
+                          width: 120,
+                          height: 120,
+                          fit: BoxFit.cover,
+                          errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                            return Container(
+                              width: 120,
+                              height: 120,
+                              color: const Color(0xff2b3645),
+                              child: const Icon(Icons.error, color: Colors.white38),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+          const SizedBox(height: 24),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xff00d4aa),
@@ -318,6 +417,119 @@ class _DrawingPageState extends State<DrawingPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildGenerationStatus(DrawingController controller) {
+    String statusText;
+    Color statusColor;
+    IconData statusIcon;
+
+    switch (controller.generationState) {
+      case GenerationState.uploading:
+        statusText = 'アップロード中...';
+        statusColor = const Color(0xff4a9eff);
+        statusIcon = Icons.cloud_upload;
+        break;
+      case GenerationState.submitting:
+        statusText = '生成リクエスト送信中...';
+        statusColor = const Color(0xff4a9eff);
+        statusIcon = Icons.send;
+        break;
+      case GenerationState.generating:
+        statusText = 'AI画像生成中...';
+        statusColor = const Color(0xffa855f7);
+        statusIcon = Icons.auto_awesome;
+        break;
+      case GenerationState.completed:
+        statusText = '生成完了！';
+        statusColor = const Color(0xff00d4aa);
+        statusIcon = Icons.check_circle;
+        break;
+      case GenerationState.error:
+        statusText = 'エラー: ${controller.generationError ?? "不明なエラー"}';
+        statusColor = const Color(0xffff4d5a);
+        statusIcon = Icons.error;
+        break;
+      default:
+        statusText = '';
+        statusColor = Colors.white60;
+        statusIcon = Icons.info;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xff18212b),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: statusColor.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: <Widget>[
+          if (controller.generationState == GenerationState.uploading ||
+              controller.generationState == GenerationState.submitting ||
+              controller.generationState == GenerationState.generating)
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70),
+            )
+          else
+            Icon(statusIcon, color: statusColor, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              statusText,
+              style: TextStyle(color: statusColor, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _generateWithNanoBanana(DrawingController controller) async {
+    final String prompt = _promptController.text.trim();
+    if (prompt.isEmpty) {
+      _showSnackBar('プロンプトを入力してください');
+      return;
+    }
+
+    try {
+      await controller.generateWithNanoBanana(
+        prompt: prompt,
+        canvasKey: _repaintBoundaryKey,
+      );
+      _showSnackBar('画像生成が完了しました！');
+    } catch (e) {
+      _showSnackBar('画像生成に失敗しました: $e');
+    }
+  }
+
+  Future<void> _generateWithSeedream(DrawingController controller) async {
+    final String prompt = _promptController.text.trim();
+    if (prompt.isEmpty) {
+      _showSnackBar('プロンプトを入力してください');
+      return;
+    }
+
+    try {
+      await controller.generateWithSeedream(
+        prompt: prompt,
+        canvasKey: _repaintBoundaryKey,
+      );
+      _showSnackBar('画像生成が完了しました！');
+    } catch (e) {
+      _showSnackBar('画像生成に失敗しました: $e');
+    }
+  }
+
+  Future<void> _loadResultAsReference(dynamic result) async {
+    try {
+      await _controller.loadGenerationResultAsReference(result);
+      _showSnackBar('生成結果をリファレンスとして読み込みました');
+    } catch (e) {
+      _showSnackBar('画像の読み込みに失敗しました: $e');
+    }
   }
 
   Widget _buildSizeControls(BuildContext context, DrawingController controller) {

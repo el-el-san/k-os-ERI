@@ -131,6 +131,10 @@ class _CanvasPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CanvasPainter oldDelegate) {
-    return true;
+    return referenceImage != oldDelegate.referenceImage ||
+        strokes.length != oldDelegate.strokes.length ||
+        texts.length != oldDelegate.texts.length ||
+        (strokes.isNotEmpty && oldDelegate.strokes.isNotEmpty && strokes.last != oldDelegate.strokes.last) ||
+        (texts.isNotEmpty && oldDelegate.texts.isNotEmpty && texts.last != oldDelegate.texts.last);
   }
 }
