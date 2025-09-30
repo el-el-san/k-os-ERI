@@ -737,16 +737,25 @@ class _DrawingPageState extends State<DrawingPage> {
         return;
       }
 
-      if (result.files.first.bytes == null) {
-        debugPrint('❌ ファイルのバイトデータがnullです');
-        _showSnackBar('画像データの読み込みに失敗しました');
-        return;
+      final PlatformFile pickedFile = result.files.first;
+
+      Uint8List? bytes = pickedFile.bytes;
+      if (bytes == null) {
+        final String? path = pickedFile.path;
+        if (path == null) {
+          debugPrint('❌ ファイルのバイトデータとパスが取得できませんでした');
+          _showSnackBar('画像データの読み込みに失敗しました');
+          return;
+        }
+
+        // Android などでは bytes が省略されるため、パスから読み込む
+        bytes = await File(path).readAsBytes();
       }
 
-      final int byteLength = result.files.first.bytes!.length;
-      debugPrint('✅ 画像を選択しました: ${result.files.first.name}, サイズ: $byteLength bytes');
+      final int byteLength = bytes.length;
+      debugPrint('✅ 画像を選択しました: ${pickedFile.name}, サイズ: $byteLength bytes');
 
-      await _controller.loadReferenceImage(result.files.first.bytes!);
+      await _controller.loadReferenceImage(bytes);
       debugPrint('✅ リファレンス画像を読み込みました');
       _showSnackBar('リファレンス画像を読み込みました');
     } catch (error, stackTrace) {
