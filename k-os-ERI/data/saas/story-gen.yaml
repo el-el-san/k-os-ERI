@@ -63,6 +63,12 @@
               <option value="hailuo-02">Hailuo-02</option>
             </select>
           </div>
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <label for="storyGenTargetSceneSelect" style="font-size: 13px; font-weight: 600; color: #334155;">出力先シーン:</label>
+            <select id="storyGenTargetSceneSelect" class="story-gen__result-scene-select" style="flex-grow: 1;">
+              <option value="" disabled selected>出力先のシーンを選択...</option>
+            </select>
+          </div>
           <textarea class="story-gen__shared-textarea" id="storyGenPromptInput" placeholder="編集・生成したい内容（例: 色味を暖色に、肌をなめらかに、背景を夕景に など）"></textarea>
           <div style="display: flex; gap: 12px;">
             <button class="story-gen__generate-btn" id="storyGenNanoBtn" style="background: linear-gradient(45deg, #a855f7, #00d4aa); flex: 1;">
@@ -862,6 +868,7 @@
         const logAutoscroll = document.getElementById('storyGenLogAutoscroll');
         const cutMeta = document.getElementById('storyGenCut');
         const dateMeta = document.getElementById('storyGenDate');
+        const targetSceneSelect = document.getElementById('storyGenTargetSceneSelect');
 
         // State
         let mcpConfigManager;
@@ -905,6 +912,34 @@
           renderSpread();
           renderVertical();
           updateInputTray();
+          renderTargetSceneSelect();
+          updateGenerateButtonsState();
+        }
+
+        function renderTargetSceneSelect() {
+          const selectedValue = targetSceneSelect.value;
+          targetSceneSelect.innerHTML = '<option value="" disabled selected>出力先のシーンを選択...</option>';
+
+          state.scenes.forEach(scene => {
+            const option = document.createElement('option');
+            option.value = scene.id;
+            const promptText = scene.prompt.trim().substring(0, 30);
+            option.textContent = `CUT ${scene.cut}: ${promptText || '無題'}`;
+            targetSceneSelect.appendChild(option);
+          });
+
+          if (state.scenes.some(s => s.id === selectedValue)) {
+            targetSceneSelect.value = selectedValue;
+          }
+        }
+
+        function updateGenerateButtonsState() {
+            const targetSceneId = targetSceneSelect.value;
+            const anyJobRunning = state.scenes.some(s => s.isGenerating);
+            const isDisabled = !targetSceneId || anyJobRunning;
+
+            nanoBtn.disabled = isDisabled;
+            seedBtn.disabled = isDisabled;
         }
 
         function renderSpread() {
@@ -1468,16 +1503,19 @@
         async function handleGenericGenerate(options) {
             const { modelName, buttonEl, buttonTextEl, serverFilter, toolFilters } = options;
 
+            const targetSceneId = targetSceneSelect.value;
+            if (!targetSceneId) {
+                alert('出力先のシーンをドロップダウンから選択してください。');
+                return;
+            }
+
             const anyJobRunning = state.scenes.some(s => s.isGenerating);
             if (anyJobRunning) {
                 alert('現在別のシーンを処理中です。完了するまでお待ちください。');
                 return;
             }
-            if (!state.selectedSceneId) {
-                alert('画像を反映させる先のシーンをクリックして選択してください。');
-                return;
-            }
-            const scene = state.scenes.find(s => s.id === state.selectedSceneId);
+
+            const scene = state.scenes.find(s => s.id === targetSceneId);
             if (!scene) {
                 alert('選択されたシーンが見つかりません。');
                 return;
@@ -1586,6 +1624,7 @@
           const videoModelSelect = document.getElementById('videoModelSelect');
 
           // Event Listeners
+          targetSceneSelect.addEventListener('change', updateGenerateButtonsState);
           videoModelSelect.addEventListener('change', (e) => {
             state.generation.selectedVideoModel = e.target.value;
             storyGenLog(`Animation model changed to: ${e.target.value}`);

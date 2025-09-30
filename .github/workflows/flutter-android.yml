@@ -1,0 +1,73 @@
+name: Flutter Android CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'flutter/direct_drawing_generator/**'
+      - '.github/workflows/flutter-android.yml'
+  pull_request:
+    paths:
+      - 'flutter/direct_drawing_generator/**'
+      - '.github/workflows/flutter-android.yml'
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter/direct_drawing_generator
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.22.2'
+
+      - name: Ensure Android platform scaffolding
+        run: flutter create --platforms android --no-pub .
+
+      - name: Align Kotlin stdlib versions
+        run: |
+          cat <<'GRADLE' >> android/app/build.gradle
+          configurations.all {
+              resolutionStrategy.eachDependency { details ->
+                  if (details.requested.group == "org.jetbrains.kotlin") {
+                      details.useVersion "1.9.24"
+                  }
+              }
+          }
+          GRADLE
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Flutter analyze
+        run: flutter analyze
+
+      - name: Run widget tests
+        run: flutter test
+
+      - name: Build Android APK (release)
+        run: flutter build apk --release
+
+      - name: Inspect APK outputs
+        run: find build/app/outputs -maxdepth 3 -type f -name '*.apk'
+
+      - name: Upload APK artifact
+        if: success()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-drawing-apk
+          path: flutter/direct_drawing_generator/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error

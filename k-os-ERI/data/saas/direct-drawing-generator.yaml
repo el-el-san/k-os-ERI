@@ -490,7 +490,7 @@
         .comparison-image {
             width: clamp(280px, 32vw, 420px);
             height: auto;
-            aspect-ratio: 1 / 1;
+            /* aspect-ratio: 1 / 1; */
             border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
@@ -851,7 +851,7 @@
                         <div class="comparison-item before-item">
                             <div class="comparison-label">Before</div>
                             <div class="comparison-image" id="beforeImage">
-                                <img src="" alt="Before" style="width:100%;height:100%;object-fit:cover;">
+                                <img src="" alt="Before" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: contain;">
                                 <canvas id="drawingCanvas" width="300" height="300" style="position: absolute; top: 0; left: 0; cursor: crosshair; z-index: 10; display: none; border-radius: 12px;"></canvas>
                             </div>
                         </div>
@@ -985,10 +985,10 @@
                 const whiteUrl = makeWhite(window.__placeholder_size__);
                 const before = byId('beforeImage');
                 if (before){
-                  before.innerHTML = `<img src="${whiteUrl}" alt="Before (white 1024)" style="width:100%;height:100%;object-fit:cover;">` + before.innerHTML.replace(/^[\s\S]*?<canvas /,'<canvas ');
+                  before.innerHTML = `<img src="${whiteUrl}" alt="Before (white 1024)" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: contain;">` + before.innerHTML.replace(/^[\s\S]*?<canvas /,'<canvas ');
                 }
                 const after = byId('afterImage');
-                if (after){ after.innerHTML = `<img src="${whiteUrl}" alt="After (white 1024)" style="width:100%;height:100%;object-fit:cover;">`; }
+                if (after){ after.innerHTML = `<img src="${whiteUrl}" alt="After (white 1024)" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: contain;">`; }
               } catch(_){ /* no-op */ }
             })();
 
@@ -2774,7 +2774,7 @@
             function setAfterImage(url){
                 const after = byId('afterImage');
                 if (!after) return;
-                after.innerHTML = `<img src="${url}" alt="Generated result" style="width:100%;height:100%;object-fit:cover;">`;
+                after.innerHTML = `<img src="${url}" alt="Generated result" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: contain;">`;
             }
 
             async function localGenerateFromBefore({ prompt, model, size }){
@@ -3021,19 +3021,50 @@
 
                 const resizeCanvasToImage = () => {
                     const imgEl = qs('#beforeImage img');
-                    if (!imgEl) return;
-                    const snapshot = canvasSnapshotUrl || (canvas.width > 0 && canvas.height > 0 ? canvas.toDataURL('image/png') : null);
-                    const w = imgEl.clientWidth || 300;
-                    const h = imgEl.clientHeight || 300;
-                    if (w > 0 && h > 0) {
-                        canvas.width = w;
-                        canvas.height = h;
-                        applyDrawingStyles();
-                        if (snapshot) {
-                            restoreCanvas(snapshot);
-                        } else {
-                            rememberCanvas();
-                        }
+                    const container = byId('beforeImage');
+                    if (!imgEl || !container || !imgEl.complete || !imgEl.naturalWidth) return;
+
+                    // Preserve drawing if it exists
+                    const snapshot = (canvas.width > 0 && canvas.height > 0) ? canvas.toDataURL('image/png') : null;
+
+                    // Set canvas resolution to the image's natural resolution
+                    canvas.width = imgEl.naturalWidth;
+                    canvas.height = imgEl.naturalHeight;
+
+                    // Calculate the visual dimensions and position of the image (due to object-fit: contain)
+                    const containerWidth = container.clientWidth;
+                    const containerHeight = container.clientHeight;
+                    const imageRatio = imgEl.naturalWidth / imgEl.naturalHeight;
+                    const containerRatio = containerWidth / containerHeight;
+
+                    let visualWidth, visualHeight, top, left;
+
+                    if (containerRatio > imageRatio) {
+                        // Container is wider than image (letterboxed)
+                        visualHeight = containerHeight;
+                        visualWidth = visualHeight * imageRatio;
+                        top = 0;
+                        left = (containerWidth - visualWidth) / 2;
+                    } else {
+                        // Container is taller than image (pillarboxed)
+                        visualWidth = containerWidth;
+                        visualHeight = visualWidth / imageRatio;
+                        top = (containerHeight - visualHeight) / 2;
+                        left = 0;
+                    }
+
+                    // Apply styles to perfectly overlay the canvas on the image
+                    canvas.style.width = visualWidth + 'px';
+                    canvas.style.height = visualHeight + 'px';
+                    canvas.style.top = top + 'px';
+                    canvas.style.left = left + 'px';
+
+                    // Restore drawing styles and content
+                    applyDrawingStyles();
+                    if (snapshot) {
+                        restoreCanvas(snapshot);
+                    } else {
+                        rememberCanvas();
                     }
                 };
 
@@ -3204,122 +3235,133 @@
                 if (saveDrawingBtn) {
                     saveDrawingBtn.addEventListener('click', () => {
                         const beforeImg = qs('#beforeImage img');
-                        if (!beforeImg) return;
+                        if (!beforeImg || !beforeImg.complete || !beforeImg.naturalWidth) {
+                            alert('背景画像が読み込まれていません。');
+                            return;
+                        }
 
                         const combinedCanvas = document.createElement('canvas');
                         const combinedCtx = combinedCanvas.getContext('2d');
-                        combinedCanvas.width = 300;
-                        combinedCanvas.height = 300;
 
-                        const img = new Image();
-                        img.crossOrigin = 'anonymous';
+                        // Set the final canvas to the natural, full resolution of the image
+                        combinedCanvas.width = beforeImg.naturalWidth;
+                        combinedCanvas.height = beforeImg.naturalHeight;
 
-                        img.onload = function() {
-                            combinedCtx.drawImage(img, 0, 0, 300, 300);
-                            combinedCtx.drawImage(canvas, 0, 0);
+                        // Draw the original image without any scaling
+                        combinedCtx.drawImage(beforeImg, 0, 0, beforeImg.naturalWidth, beforeImg.naturalHeight);
 
-                            const dataURL = combinedCanvas.toDataURL('image/png');
-                            const timestamp = Date.now();
-                            const filename = 'hand-drawn-' + timestamp + '.png';
+                        // Draw the drawing canvas on top. Since `drawingCanvas` has the same dimensions, this is a 1:1 copy.
+                        combinedCtx.drawImage(canvas, 0, 0, beforeImg.naturalWidth, beforeImg.naturalHeight);
 
-                            const referenceGrid = qs('.reference-grid');
-                            if (referenceGrid) {
-                                const newReferenceItem = document.createElement('div');
-                                newReferenceItem.className = 'reference-item selected';
-                                newReferenceItem.innerHTML = `
-                                    <img src="${dataURL}" alt="Hand Drawn">
-                                    <div class="checkmark">✓</div>
-                                `;
+                        const dataURL = combinedCanvas.toDataURL('image/png');
+                        const timestamp = Date.now();
+                        const filename = 'hand-drawn-' + timestamp + '.png';
 
-                                newReferenceItem.addEventListener('click', function(e) {
-                                    e.preventDefault();
-                                    this.classList.toggle('selected');
-                                    const imgEl = this.querySelector('img');
-                                    if (imgEl) {
-                                        const before = qs('#beforeImage img');
-                                        if (before) {
-                                            before.src = imgEl.src;
-                                            before.alt = imgEl.alt;
-                                        }
+                        const referenceGrid = qs('.reference-grid');
+                        if (referenceGrid) {
+                            const newReferenceItem = document.createElement('div');
+                            newReferenceItem.className = 'reference-item selected';
+                            newReferenceItem.innerHTML = `
+                                <img src="${dataURL}" alt="Hand Drawn">
+                                <div class="checkmark">✓</div>
+                            `;
+
+                            newReferenceItem.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                this.classList.toggle('selected');
+                                const imgEl = this.querySelector('img');
+                                if (imgEl) {
+                                    const before = qs('#beforeImage img');
+                                    if (before) {
+                                        before.src = imgEl.src;
+                                        before.alt = imgEl.alt;
                                     }
-                                });
+                                }
+                            });
 
-                                newReferenceItem.addEventListener('contextmenu', function(e) {
-                                    e.preventDefault();
-                                    const relativePath = '/' + filename;
-                                    const existingMenu = document.querySelector('.context-menu');
-                                    if (existingMenu) existingMenu.remove();
+                            newReferenceItem.addEventListener('contextmenu', function(e) {
+                                e.preventDefault();
+                                const relativePath = '/' + filename;
+                                const existingMenu = document.querySelector('.context-menu');
+                                if (existingMenu) existingMenu.remove();
 
-                                    const menu = document.createElement('div');
-                                    menu.className = 'context-menu';
-                                    menu.style.cssText = `
-                                        position: fixed;
-                                        left: ${e.clientX}px;
-                                        top: ${e.clientY}px;
-                                        background: #2a2a2a;
-                                        border: 1px solid #444;
-                                        border-radius: 4px;
-                                        padding: 8px 12px;
-                                        color: #e0e0e0;
-                                        font-size: 12px;
-                                        z-index: 1000;
-                                        cursor: pointer;
-                                        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-                                    `;
-                                    menu.textContent = relativePath;
-                                    menu.title = 'Click to copy';
+                                const menu = document.createElement('div');
+                                menu.className = 'context-menu';
+                                menu.style.cssText = `
+                                    position: fixed;
+                                    left: ${e.clientX}px;
+                                    top: ${e.clientY}px;
+                                    background: #2a2a2a;
+                                    border: 1px solid #444;
+                                    border-radius: 4px;
+                                    padding: 8px 12px;
+                                    color: #e0e0e0;
+                                    font-size: 12px;
+                                    z-index: 1000;
+                                    cursor: pointer;
+                                    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                                `;
+                                menu.textContent = relativePath;
+                                menu.title = 'Click to copy';
 
-                                    menu.addEventListener('click', function() {
-                                        navigator.clipboard.writeText(relativePath).then(() => {
-                                            menu.textContent = '✅ Copied!';
-                                            setTimeout(() => menu.remove(), 1000);
-                                        }).catch(err => {
-                                            console.error('Failed to copy:', err);
-                                            menu.textContent = '❌ Copy failed';
-                                        });
+                                menu.addEventListener('click', function() {
+                                    navigator.clipboard.writeText(relativePath).then(() => {
+                                        menu.textContent = '✅ Copied!';
+                                        setTimeout(() => menu.remove(), 1000);
+                                    }).catch(err => {
+                                        console.error('Failed to copy:', err);
+                                        menu.textContent = '❌ Copy failed';
                                     });
-
-                                    document.body.appendChild(menu);
-                                    const removeMenu = (evt) => {
-                                        if (!menu.contains(evt.target)) {
-                                            menu.remove();
-                                            document.removeEventListener('click', removeMenu);
-                                        }
-                                    };
-                                    setTimeout(() => document.addEventListener('click', removeMenu), 0);
                                 });
 
-                                referenceGrid.appendChild(newReferenceItem);
-                            }
+                                document.body.appendChild(menu);
+                                const removeMenu = (evt) => {
+                                    if (!menu.contains(evt.target)) {
+                                        menu.remove();
+                                        document.removeEventListener('click', removeMenu);
+                                    }
+                                };
+                                setTimeout(() => document.addEventListener('click', removeMenu), 0);
+                            });
 
-                            lastSavedDrawing = dataURL;
+                            referenceGrid.appendChild(newReferenceItem);
+                        }
 
-                            combinedCanvas.toBlob(function(blob) {
-                                const url = URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                link.href = url;
-                                link.download = filename;
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                URL.revokeObjectURL(url);
-                            }, 'image/png');
+                        lastSavedDrawing = dataURL;
 
-                            const originalText = saveDrawingBtn.textContent;
-                            saveDrawingBtn.textContent = '✅ Saved & Added!';
-                            saveDrawingBtn.style.background = '#4CAF50';
-                            setTimeout(() => {
-                                saveDrawingBtn.textContent = originalText;
-                                saveDrawingBtn.style.background = '#3a3a3a';
-                            }, 2000);
-                        };
+                        combinedCanvas.toBlob(function(blob) {
+                            const url = URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = filename;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            URL.revokeObjectURL(url);
+                        }, 'image/png');
 
-                        img.src = beforeImg.src;
+                        const originalText = saveDrawingBtn.textContent;
+                        saveDrawingBtn.textContent = '✅ Saved & Added!';
+                        saveDrawingBtn.style.background = '#4CAF50';
+                        setTimeout(() => {
+                            saveDrawingBtn.textContent = originalText;
+                            saveDrawingBtn.style.background = '#3a3a3a';
+                        }, 2000);
+                    });
+                }
+
+                const beforeImgEl = qs('#beforeImage img');
+                if (beforeImgEl) {
+                    beforeImgEl.addEventListener('load', () => {
+                        // When a new image is loaded, resize the canvas if drawing is active
+                        if (drawingEnabled || textMode || eraserEnabled) {
+                            resizeCanvasToImage();
+                        }
                     });
                 }
 
                 window.addEventListener('resize', () => {
-                    if (drawingEnabled || textMode) {
+                    if (drawingEnabled || textMode || eraserEnabled) {
                         resizeCanvasToImage();
                     }
                 });
