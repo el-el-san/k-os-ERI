@@ -47,7 +47,7 @@ flutter test
 
 ## CI / CD
 
-`.github/workflows/flutter-android.yml` で GitHub Actions を定義しており、プッシュ／プルリクエスト時に Flutter の解析・テスト・Android 用 APK ビルドを自動実行します。ビルドごとに `pubspec.yaml` のバージョンが自動で更新され、コミット数とワークフローの実行回数に基づいた単調増加の `buildNumber` が付与されるため、端末への更新インストールが常に可能です。生成された APK と `version-info.txt` はワークフローのアーティファクトとして取得できます。
+`.github/workflows/flutter-android.yml` で GitHub Actions を定義しており、プッシュ／プルリクエスト時に Flutter の解析・テスト・Android 用 APK ビルドを自動実行します。ビルドごとに `pubspec.yaml` のバージョンが自動で更新され、コミット数とワークフローの実行回数に基づいた単調増加の `buildNumber` が付与されるため、端末への更新インストールが常に可能です。また、CI 内で `ci/update-signing.keystore.base64` から決定論的な署名キーを展開して APK を常に同じ証明書で署名するため、既存インストールとのパッケージ競合が発生しません。生成された APK と `version-info.txt` はワークフローのアーティファクトとして取得できます。
 
 ## Notes
 

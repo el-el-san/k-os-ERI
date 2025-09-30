@@ -38,6 +38,31 @@ jobs:
       - name: Ensure Android platform scaffolding
         run: flutter create --platforms android --no-pub .
 
+      - name: Provision deterministic signing key
+        run: |
+          set -euo pipefail
+          KEYSTORE_B64="ci/update-signing.keystore.base64"
+          KEYSTORE_PATH="android/app/update-signing.keystore"
+          KEY_PROPS="android/key.properties"
+
+          if [ ! -f "$KEYSTORE_B64" ]; then
+            echo "::error::Missing $KEYSTORE_B64. Confirm it is committed." >&2
+            exit 1
+          fi
+
+          mkdir -p "$(dirname "$KEYSTORE_PATH")"
+          base64 --decode "$KEYSTORE_B64" > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+
+          cat <<'EOF' > "$KEY_PROPS"
+storeFile=../app/update-signing.keystore
+storePassword=koseri123
+keyAlias=koseri
+keyPassword=koseri123
+EOF
+
+          sha256sum "$KEYSTORE_PATH"
+
       - name: Align Kotlin stdlib versions
         run: |
           cat <<'GRADLE' >> android/app/build.gradle
