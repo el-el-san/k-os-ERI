@@ -9,6 +9,7 @@ class ImageUploadService {
   ImageUploadService({
     this.uploadEndpoint = 'http://localhost:3001/upload',
     this.exposeEndpoint = 'http://localhost:3001/expose',
+    this.authorization,
   });
 
   /// アップロードエンドポイント
@@ -16,6 +17,9 @@ class ImageUploadService {
 
   /// 公開エンドポイント（フォールバック用）
   final String exposeEndpoint;
+
+  /// 共通Authorizationヘッダー
+  final String? authorization;
 
   /// 画像をアップロードして公開URLを取得
   Future<String> uploadImage(Uint8List imageBytes, {String? filename}) async {
@@ -44,6 +48,10 @@ class ImageUploadService {
       'POST',
       Uri.parse(uploadEndpoint),
     );
+
+    if (authorization != null && authorization!.isNotEmpty) {
+      request.headers['Authorization'] = authorization!;
+    }
 
     request.files.add(
       http.MultipartFile.fromBytes(
@@ -83,6 +91,7 @@ class ImageUploadService {
       Uri.parse(exposeEndpoint),
       headers: <String, String>{
         'Content-Type': 'application/json',
+        if (authorization != null && authorization!.isNotEmpty) 'Authorization': authorization!,
       },
       body: jsonEncode(<String, dynamic>{
         'data': base64Data,

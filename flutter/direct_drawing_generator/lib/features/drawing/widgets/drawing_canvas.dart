@@ -131,10 +131,48 @@ class _CanvasPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CanvasPainter oldDelegate) {
-    return referenceImage != oldDelegate.referenceImage ||
-        strokes.length != oldDelegate.strokes.length ||
-        texts.length != oldDelegate.texts.length ||
-        (strokes.isNotEmpty && oldDelegate.strokes.isNotEmpty && strokes.last != oldDelegate.strokes.last) ||
-        (texts.isNotEmpty && oldDelegate.texts.isNotEmpty && texts.last != oldDelegate.texts.last);
+    if (referenceImage != oldDelegate.referenceImage) {
+      return true;
+    }
+
+    if (strokes.length != oldDelegate.strokes.length) {
+      return true;
+    }
+
+    for (int i = 0; i < strokes.length; i++) {
+      final DrawnStroke current = strokes[i];
+      final DrawnStroke previous = oldDelegate.strokes[i];
+      if (current != previous) {
+        return true;
+      }
+      if (current.points.length != previous.points.length) {
+        return true;
+      }
+      if (current.color != previous.color ||
+          current.strokeWidth != previous.strokeWidth ||
+          current.blendMode != previous.blendMode) {
+        return true;
+      }
+    }
+
+    if (texts.length != oldDelegate.texts.length) {
+      return true;
+    }
+
+    for (int i = 0; i < texts.length; i++) {
+      final DrawnText current = texts[i];
+      final DrawnText previous = oldDelegate.texts[i];
+      if (current != previous) {
+        return true;
+      }
+      if (current.text != previous.text ||
+          current.position != previous.position ||
+          current.color != previous.color ||
+          current.fontSize != previous.fontSize) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }

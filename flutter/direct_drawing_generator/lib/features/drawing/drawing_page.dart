@@ -14,6 +14,7 @@ import 'package:share_plus/share_plus.dart';
 import 'drawing_controller.dart';
 import 'models/drawing_mode.dart';
 import 'models/generation_state.dart';
+import 'models/app_settings.dart';
 import 'widgets/drawing_canvas.dart';
 
 class DrawingPage extends StatefulWidget {
@@ -336,6 +337,8 @@ class _DrawingPageState extends State<DrawingPage> {
           const SizedBox(height: 24),
           Text('AI Image Generation', style: theme.textTheme.titleMedium?.copyWith(color: Colors.white70)),
           const SizedBox(height: 12),
+          _buildServerSettingsCard(controller),
+          const SizedBox(height: 12),
           TextField(
             controller: _promptController,
             maxLines: 3,
@@ -444,6 +447,50 @@ class _DrawingPageState extends State<DrawingPage> {
     );
   }
 
+  Widget _buildServerSettingsCard(DrawingController controller) {
+    final ThemeData theme = Theme.of(context);
+    final AppSettings settings = controller.settings;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xff18212b),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xff253143)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            '接続先エンドポイント',
+            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          _EndpointRow(label: 'Upload', value: settings.uploadEndpoint),
+          _EndpointRow(label: 'Expose', value: settings.exposeEndpoint),
+          _EndpointRow(label: 'Nano Banana', value: settings.nanoBananaEndpoint),
+          _EndpointRow(label: 'Seedream', value: settings.seedreamEndpoint),
+          if ((settings.uploadAuthorization ?? settings.mcpAuthorization) != null) ...<Widget>[
+            const SizedBox(height: 8),
+            if (settings.uploadAuthorization != null)
+              _EndpointRow(label: 'Upload Auth', value: settings.uploadAuthorization!),
+            if (settings.mcpAuthorization != null)
+              _EndpointRow(label: 'MCP Auth', value: settings.mcpAuthorization!),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _openServerSettings,
+              icon: const Icon(Icons.settings),
+              label: const Text('サーバー設定を変更'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildGenerationStatus(DrawingController controller) {
     String statusText;
     Color statusColor;
@@ -510,6 +557,25 @@ class _DrawingPageState extends State<DrawingPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _openServerSettings() async {
+    final AppSettings? updated = await showDialog<AppSettings>(
+      context: context,
+      builder: (BuildContext context) {
+        return _ServerSettingsDialog(initial: _controller.settings);
+      },
+    );
+
+    if (!mounted || updated == null) {
+      return;
+    }
+
+    await _controller.updateSettings(updated);
+    if (!mounted) {
+      return;
+    }
+    _showSnackBar('サーバー設定を保存しました');
   }
 
   Future<void> _generateWithNanoBanana(DrawingController controller) async {
@@ -860,6 +926,278 @@ class _DrawingPageState extends State<DrawingPage> {
         content: Text(message),
       ),
     );
+  }
+}
+
+class _EndpointRow extends StatelessWidget {
+  const _EndpointRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final TextStyle labelStyle = Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: Colors.white54) ??
+        const TextStyle(fontSize: 11, color: Colors.white54);
+    final TextStyle valueStyle = Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: Colors.white70) ??
+        const TextStyle(fontSize: 11, color: Colors.white70);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 92,
+            child: Text(label, style: labelStyle),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Tooltip(
+              message: value,
+              preferBelow: false,
+              child: Text(
+                value,
+                style: valueStyle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServerSettingsDialog extends StatefulWidget {
+  const _ServerSettingsDialog({
+    required this.initial,
+  });
+
+  final AppSettings initial;
+
+  @override
+  State<_ServerSettingsDialog> createState() => _ServerSettingsDialogState();
+}
+
+class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
+  late final TextEditingController _uploadController;
+  late final TextEditingController _exposeController;
+  late final TextEditingController _nanoBananaController;
+  late final TextEditingController _seedreamController;
+  late final TextEditingController _uploadAuthController;
+  late final TextEditingController _mcpAuthController;
+
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _uploadController = TextEditingController(text: widget.initial.uploadEndpoint);
+    _exposeController = TextEditingController(text: widget.initial.exposeEndpoint);
+    _nanoBananaController = TextEditingController(text: widget.initial.nanoBananaEndpoint);
+    _seedreamController = TextEditingController(text: widget.initial.seedreamEndpoint);
+    _uploadAuthController = TextEditingController(text: widget.initial.uploadAuthorization ?? '');
+    _mcpAuthController = TextEditingController(text: widget.initial.mcpAuthorization ?? '');
+  }
+
+  @override
+  void dispose() {
+    _uploadController.dispose();
+    _exposeController.dispose();
+    _nanoBananaController.dispose();
+    _seedreamController.dispose();
+    _uploadAuthController.dispose();
+    _mcpAuthController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xff1b2430),
+      title: Row(
+        children: const <Widget>[
+          Icon(Icons.settings, color: Color(0xff4a9eff)),
+          SizedBox(width: 8),
+          Text('サーバー設定'),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text('アップロードAPI', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
+              const SizedBox(height: 6),
+              _buildUrlField(
+                controller: _uploadController,
+                label: 'Upload Endpoint',
+                hintText: '例: https://your-server/upload',
+              ),
+              const SizedBox(height: 12),
+              _buildUrlField(
+                controller: _exposeController,
+                label: 'Expose Endpoint',
+                hintText: '例: https://your-server/expose',
+              ),
+              const SizedBox(height: 16),
+              const Text('MCP サーバー', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
+              const SizedBox(height: 6),
+              _buildUrlField(
+                controller: _nanoBananaController,
+                label: 'Nano Banana MCP URL',
+                hintText: '例: https://your-server/mcp/i2i/fal/nano-banana/v1',
+              ),
+              const SizedBox(height: 12),
+              _buildUrlField(
+                controller: _seedreamController,
+                label: 'Seedream MCP URL',
+                hintText: '例: https://your-server/mcp/i2i/fal/bytedance/seedream',
+              ),
+              const SizedBox(height: 16),
+              const Text('認証ヘッダー (任意)', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
+              const SizedBox(height: 6),
+              _buildTextField(
+                controller: _uploadAuthController,
+                label: 'Upload Authorization',
+                hintText: '例: Bearer xxxxx',
+              ),
+              const SizedBox(height: 12),
+              _buildTextField(
+                controller: _mcpAuthController,
+                label: 'MCP Authorization',
+                hintText: '例: Bearer yyyyy',
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: _restoreDefaults,
+          child: const Text('デフォルトに戻す'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('キャンセル'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xff4a9eff)),
+          onPressed: _handleSave,
+          child: const Text('保存'),
+        ),
+      ],
+    );
+  }
+
+  void _restoreDefaults() {
+    final AppSettings defaults = AppSettings.defaults();
+    _uploadController.text = defaults.uploadEndpoint;
+    _exposeController.text = defaults.exposeEndpoint;
+    _nanoBananaController.text = defaults.nanoBananaEndpoint;
+    _seedreamController.text = defaults.seedreamEndpoint;
+    _uploadAuthController.clear();
+    _mcpAuthController.clear();
+  }
+
+  Future<void> _handleSave() async {
+    final FormState? formState = _formKey.currentState;
+    if (formState == null || !formState.validate()) {
+      return;
+    }
+
+    Navigator.of(context).pop(_buildSettings());
+  }
+
+  AppSettings _buildSettings() {
+    String? uploadAuth = _uploadAuthController.text.trim();
+    if (uploadAuth.isEmpty) {
+      uploadAuth = null;
+    }
+    String? mcpAuth = _mcpAuthController.text.trim();
+    if (mcpAuth.isEmpty) {
+      mcpAuth = null;
+    }
+
+    return AppSettings(
+      uploadEndpoint: _uploadController.text.trim(),
+      exposeEndpoint: _exposeController.text.trim(),
+      nanoBananaEndpoint: _nanoBananaController.text.trim(),
+      seedreamEndpoint: _seedreamController.text.trim(),
+      uploadAuthorization: uploadAuth,
+      mcpAuthorization: mcpAuth,
+    );
+  }
+
+  Widget _buildUrlField({
+    required TextEditingController controller,
+    required String label,
+    required String hintText,
+  }) {
+    return _buildTextField(
+      controller: controller,
+      label: label,
+      hintText: hintText,
+      validator: _validateUrl,
+      keyboardType: TextInputType.url,
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hintText,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      style: const TextStyle(color: Colors.white),
+      keyboardType: keyboardType,
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hintText,
+        labelStyle: const TextStyle(color: Colors.white70),
+        hintStyle: const TextStyle(color: Colors.white38),
+        filled: true,
+        fillColor: const Color(0xff18212b),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xff253143)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xff4a9eff)),
+        ),
+      ),
+      validator: validator,
+    );
+  }
+
+  String? _validateUrl(String? value) {
+    final String trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return 'URLを入力してください';
+    }
+    final Uri? uri = Uri.tryParse(trimmed);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      return '有効なURLを入力してください';
+    }
+    return null;
   }
 }
 

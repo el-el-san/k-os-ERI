@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:http/http.dart' as http;
 
+import 'models/app_settings.dart';
 import 'models/drawn_stroke.dart';
 import 'models/drawn_text.dart';
 import 'models/drawing_mode.dart';
@@ -13,10 +14,16 @@ import 'models/generation_state.dart';
 import 'models/mcp_config.dart';
 import 'services/image_upload_service.dart';
 import 'services/mcp_client.dart';
+import 'services/settings_repository.dart';
 
 class DrawingController extends ChangeNotifier {
-  DrawingController();
+  DrawingController({SettingsRepository? settingsRepository})
+      : _settingsRepository = settingsRepository ?? SettingsRepository() {
+    _applySettings(AppSettings.defaults(), notify: false);
+    _loadSettings();
+  }
 
+  final SettingsRepository _settingsRepository;
   final List<DrawnStroke> _strokes = <DrawnStroke>[];
   final List<DrawnText> _texts = <DrawnText>[];
   final List<_CanvasAction> _history = <_CanvasAction>[];
@@ -35,8 +42,10 @@ class DrawingController extends ChangeNotifier {
   GenerationState _generationState = GenerationState.idle;
   String? _generationError;
   final List<GenerationResult> _generationResults = <GenerationResult>[];
-  final ImageUploadService _uploadService = ImageUploadService();
-  McpConfig? _mcpConfig;
+  late ImageUploadService _uploadService;
+  late AppSettings _settings;
+  late McpConfig _nanoBananaConfig;
+  late McpConfig _seedreamConfig;
 
   DrawingMode get mode => _mode;
   Color get penColor => _penColor;
@@ -59,7 +68,39 @@ class DrawingController extends ChangeNotifier {
   GenerationState get generationState => _generationState;
   String? get generationError => _generationError;
   List<GenerationResult> get generationResults => List<GenerationResult>.unmodifiable(_generationResults);
-  McpConfig? get mcpConfig => _mcpConfig;
+  AppSettings get settings => _settings;
+  McpConfig get nanoBananaConfig => _nanoBananaConfig;
+  McpConfig get seedreamConfig => _seedreamConfig;
+
+  Future<void> _loadSettings() async {
+    final AppSettings loaded = await _settingsRepository.load();
+    _applySettings(loaded);
+  }
+
+  Future<void> updateSettings(AppSettings newSettings) async {
+    _applySettings(newSettings);
+    await _settingsRepository.save(newSettings);
+  }
+
+  void _applySettings(AppSettings settings, {bool notify = true}) {
+    _settings = settings;
+    _uploadService = ImageUploadService(
+      uploadEndpoint: settings.uploadEndpoint,
+      exposeEndpoint: settings.exposeEndpoint,
+      authorization: settings.uploadAuthorization,
+    );
+    _nanoBananaConfig = McpConfig.nanoBanana(
+      url: settings.nanoBananaEndpoint,
+      authorization: settings.mcpAuthorization,
+    );
+    _seedreamConfig = McpConfig.seedream(
+      url: settings.seedreamEndpoint,
+      authorization: settings.mcpAuthorization,
+    );
+    if (notify) {
+      notifyListeners();
+    }
+  }
 
   void setMode(DrawingMode mode) {
     if (_mode == mode) {
@@ -206,12 +247,6 @@ class DrawingController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// MCP設定を設定
-  void setMcpConfig(McpConfig config) {
-    _mcpConfig = config;
-    notifyListeners();
-  }
-
   /// キャンバスを画像としてキャプチャ
   Future<Uint8List> captureCanvas(GlobalKey repaintKey) async {
     final RenderRepaintBoundary? boundary =
@@ -237,12 +272,13 @@ class DrawingController extends ChangeNotifier {
     required GlobalKey canvasKey,
     String? mcpUrl,
   }) async {
+    final McpConfig config = mcpUrl != null
+        ? _nanoBananaConfig.copyWith(url: mcpUrl)
+        : _nanoBananaConfig;
     await _generateImage(
       prompt: prompt,
       canvasKey: canvasKey,
-      config: McpConfig.nanoBanana(
-        url: mcpUrl ?? 'http://localhost:3001/mcp/i2i/fal/nano-banana/v1',
-      ),
+      config: config,
     );
   }
 
@@ -252,12 +288,13 @@ class DrawingController extends ChangeNotifier {
     required GlobalKey canvasKey,
     String? mcpUrl,
   }) async {
+    final McpConfig config = mcpUrl != null
+        ? _seedreamConfig.copyWith(url: mcpUrl)
+        : _seedreamConfig;
     await _generateImage(
       prompt: prompt,
       canvasKey: canvasKey,
-      config: McpConfig.seedream(
-        url: mcpUrl ?? 'http://localhost:3001/mcp/i2i/fal/bytedance/seedream',
-      ),
+      config: config,
     );
   }
 
