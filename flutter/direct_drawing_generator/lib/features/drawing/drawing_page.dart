@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -13,9 +14,10 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'drawing_controller.dart';
+import 'models/app_settings.dart';
 import 'models/drawing_mode.dart';
 import 'models/generation_state.dart';
-import 'models/app_settings.dart';
+import 'services/mcp_health_checker.dart';
 import 'widgets/drawing_canvas.dart';
 
 class DrawingPage extends StatefulWidget {
@@ -1010,6 +1012,27 @@ class _EndpointRow extends StatelessWidget {
   }
 }
 
+class _ConnectionTestResult {
+  _ConnectionTestResult({
+    required this.label,
+    required this.success,
+    required this.summary,
+    List<String>? details,
+  }) : details = details ?? <String>[];
+
+  final String label;
+  final bool success;
+  final String summary;
+  final List<String> details;
+
+  void dumpToDebug() {
+    debugPrint('[ServerTest][$label] ${success ? 'OK' : 'NG'} — $summary');
+    for (final String line in details) {
+      debugPrint('[ServerTest][$label] $line');
+    }
+  }
+}
+
 class _ServerSettingsDialog extends StatefulWidget {
   const _ServerSettingsDialog({
     required this.initial,
@@ -1321,28 +1344,244 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
 
   Future<void> _testConnection() async {
     setState(() => _isTesting = true);
-    final String url = _uploadController.text.trim();
-    String? error;
+
+    final List<_ConnectionTestResult> results = <_ConnectionTestResult>[];
+    final String uploadUrl = _uploadController.text.trim();
+    final String exposeUrl = _exposeController.text.trim();
+    final String nanoBananaUrl = _nanoBananaController.text.trim();
+    final String seedreamUrl = _seedreamController.text.trim();
+
+    final String? uploadAuth = _uploadAuthController.text.trim().isEmpty
+        ? null
+        : _uploadAuthController.text.trim();
+    final String? mcpAuth = _mcpAuthController.text.trim().isEmpty
+        ? null
+        : _mcpAuthController.text.trim();
 
     try {
-      final response = await http.head(Uri.parse(url)).timeout(const Duration(seconds: 10));
-      if (response.statusCode >= 200 && response.statusCode < 400) {
-        // Success
-      } else {
-        error = 'サーバーから予期しない応答がありました (ステータスコード: ${response.statusCode})';
-      }
-    } catch (e) {
-      error = e.toString();
+      results.add(
+        await _performHttpTest(
+          label: 'アップロードAPI (HEAD)',
+          url: uploadUrl,
+          authorization: uploadAuth,
+          method: 'HEAD',
+          allowGetFallback: true,
+        ),
+      );
+
+      results.add(
+        await _performHttpTest(
+          label: 'Expose API (GET)',
+          url: exposeUrl,
+          authorization: uploadAuth,
+          method: 'GET',
+          allowGetFallback: false,
+        ),
+      );
+
+      results.add(
+        await _performMcpTest(
+          label: 'MCP: Nano Banana',
+          url: nanoBananaUrl,
+          authorization: mcpAuth,
+        ),
+      );
+
+      results.add(
+        await _performMcpTest(
+          label: 'MCP: Seedream',
+          url: seedreamUrl,
+          authorization: mcpAuth,
+        ),
+      );
     } finally {
-      if (mounted) {
-        setState(() => _isTesting = false);
-        _showConnectionResultDialog(error == null, error);
+      if (!mounted) {
+        return;
       }
+
+      setState(() => _isTesting = false);
+      _showConnectionResultDialog(results);
     }
   }
 
-  Future<void> _showConnectionResultDialog(bool success, String? error) async {
-    return showDialog<void>(
+  Future<_ConnectionTestResult> _performHttpTest({
+    required String label,
+    required String url,
+    required String method,
+    required bool allowGetFallback,
+    String? authorization,
+  }) async {
+    final List<String> details = <String>[];
+    final String trimmed = url.trim();
+
+    if (trimmed.isEmpty) {
+      final String summary = 'URLが未設定のためテストできません';
+      details.add('URL: (未設定)');
+      details.add('設定画面でURLを入力してください。');
+      return _ConnectionTestResult(label: label, success: false, summary: summary, details: details);
+    }
+
+    final Uri? uri = Uri.tryParse(trimmed);
+    if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) {
+      final String summary = 'URLが不正です';
+      details.add('URL: $trimmed');
+      details.add('プロトコルとホスト名を含む完全なURLを入力してください。');
+      return _ConnectionTestResult(label: label, success: false, summary: summary, details: details);
+    }
+
+    details.add('URL: $trimmed');
+
+    final Map<String, String> headers = <String, String>{
+      'Accept': '*/*',
+      if (authorization != null && authorization.trim().isNotEmpty) 'Authorization': authorization,
+    };
+
+    Future<http.Response> send(String verb) {
+      final Stopwatch sw = Stopwatch()..start();
+      Future<http.Response> future;
+      if (verb.toUpperCase() == 'HEAD') {
+        future = http.head(uri, headers: headers);
+      } else {
+        future = http.get(uri, headers: headers);
+      }
+      return future.then((http.Response response) {
+        sw.stop();
+        details.add('$verb 応答: HTTP ${response.statusCode} (${sw.elapsedMilliseconds}ms)');
+        details.add('レスポンスヘッダー: ${_formatHeaders(response.headers)}');
+        return response;
+      });
+    }
+
+    http.Response? response;
+
+    try {
+      response = await send(method).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode >= 200 && response.statusCode < 400) {
+        return _ConnectionTestResult(
+          label: label,
+          success: true,
+          summary: '接続成功 (HTTP ${response.statusCode})',
+          details: details,
+        );
+      }
+
+      if (allowGetFallback && method.toUpperCase() == 'HEAD' &&
+          (response.statusCode == 405 || response.statusCode == 501 || response.statusCode == 403)) {
+        details.add('HEADが許可されていないためGETで再試行します。');
+        response = await send('GET').timeout(const Duration(seconds: 12));
+        if (response.statusCode >= 200 && response.statusCode < 400) {
+          return _ConnectionTestResult(
+            label: label,
+            success: true,
+            summary: '接続成功 (HTTP ${response.statusCode})',
+            details: details,
+          );
+        }
+      }
+
+      final String bodySnippet = _truncate(response.body, 240);
+      details.add('レスポンスボディ: $bodySnippet');
+      final String summary = '接続に失敗しました (HTTP ${response.statusCode})';
+      return _ConnectionTestResult(label: label, success: false, summary: summary, details: details);
+    } catch (Object e) {
+      details.add('例外: $e');
+      return _ConnectionTestResult(
+        label: label,
+        success: false,
+        summary: '接続中にエラーが発生しました',
+        details: details,
+      );
+    }
+  }
+
+  Future<_ConnectionTestResult> _performMcpTest({
+    required String label,
+    required String url,
+    String? authorization,
+  }) async {
+    final List<String> details = <String>[];
+    final String trimmed = url.trim();
+
+    if (trimmed.isEmpty) {
+      final String summary = 'URLが未設定のためMCPテストを実行できません';
+      details.add('URL: (未設定)');
+      details.add('MCP URLを設定するとツール一覧を取得できます。');
+      return _ConnectionTestResult(label: label, success: false, summary: summary, details: details);
+    }
+
+    final Uri? uri = Uri.tryParse(trimmed);
+    if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) {
+      final String summary = 'MCP URLが不正です';
+      details.add('URL: $trimmed');
+      details.add('https:// から始まる正しいMCPエンドポイントを設定してください。');
+      return _ConnectionTestResult(label: label, success: false, summary: summary, details: details);
+    }
+
+    details.add('URL: $trimmed');
+
+    final McpHealthChecker checker = McpHealthChecker(
+      endpoint: uri,
+      authorization: authorization,
+      clientName: 'direct-drawing-generator',
+      clientVersion: '1.0.0',
+      timeout: const Duration(seconds: 15),
+    );
+
+    final Stopwatch sw = Stopwatch()..start();
+    final McpHealthCheckResult result = await checker.run();
+    sw.stop();
+
+    details.add('所要時間: ${sw.elapsedMilliseconds}ms');
+    if (result.sessionId != null && result.sessionId!.isNotEmpty) {
+      details.add('取得したセッションID: ${result.sessionId}');
+    }
+
+    for (final String log in result.logs) {
+      details.add('ログ: $log');
+    }
+
+    if (result.tools.isNotEmpty) {
+      details.add('取得ツール一覧 (${result.tools.length}件):');
+      for (final McpToolSummary tool in result.tools) {
+        details.add('  • ${tool.display()}');
+      }
+    }
+
+    if (!result.success && result.error != null) {
+      details.add('エラー詳細: ${result.error}');
+    }
+
+    final String summary = result.success
+        ? 'MCP接続成功 — 利用可能なツール ${result.tools.length} 件'
+        : 'MCP接続失敗 — 詳細はログを確認してください';
+
+    return _ConnectionTestResult(
+      label: label,
+      success: result.success,
+      summary: summary,
+      details: details,
+    );
+  }
+
+  Future<void> _showConnectionResultDialog(List<_ConnectionTestResult> results) async {
+    final bool overallSuccess = results.isNotEmpty && results.every((_) => _.success);
+    final String reportText = _buildReportText(results);
+
+    if (reportText.isNotEmpty) {
+      debugPrint('===== 接続テストレポート =====');
+      for (final _ConnectionTestResult result in results) {
+        result.dumpToDebug();
+      }
+      debugPrint(reportText);
+      debugPrint('===== レポート終了 =====');
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    await showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
@@ -1350,27 +1589,139 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
           title: Row(
             children: <Widget>[
               Icon(
-                success ? Icons.check_circle : Icons.error,
-                color: success ? const Color(0xff00d4aa) : const Color(0xffff4d5a),
+                overallSuccess ? Icons.check_circle : Icons.error,
+                color: overallSuccess ? const Color(0xff00d4aa) : const Color(0xffff4d5a),
               ),
               const SizedBox(width: 12),
               const Text('接続テスト結果'),
             ],
           ),
           content: SingleChildScrollView(
-            child: Text(
-              success ? 'サーバーへの接続に成功しました。' : '接続に失敗しました。\n\nエラー: $error',
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                for (final _ConnectionTestResult result in results)
+                  _buildResultSummaryCard(result),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xff0f141b),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xff2b3645)),
+                  ),
+                  padding: const EdgeInsets.all(12),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 240),
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        reportText.isEmpty ? 'テスト結果がありません。' : reportText,
+                        style: const TextStyle(fontSize: 12, height: 1.4),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           actions: <Widget>[
+            TextButton.icon(
+              onPressed: reportText.isEmpty ? null : () => _copyReport(reportText),
+              icon: const Icon(Icons.copy),
+              label: const Text('結果をコピー'),
+            ),
             FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('OK'),
+              child: const Text('閉じる'),
             ),
           ],
         );
       },
     );
+  }
+
+  Widget _buildResultSummaryCard(_ConnectionTestResult result) {
+    final Color accent = result.success ? const Color(0xff00d4aa) : const Color(0xffff4d5a);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xff111827),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: result.success ? const Color(0xff1f3b2f) : const Color(0xff452b2f)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(
+                result.success ? Icons.check_circle : Icons.error_outline,
+                color: accent,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  result.label,
+                  style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white70),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            result.summary,
+            style: const TextStyle(fontSize: 12, color: Colors.white60, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copyReport(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('接続テスト結果をコピーしました')),
+    );
+  }
+
+  String _buildReportText(List<_ConnectionTestResult> results) {
+    if (results.isEmpty) {
+      return '';
+    }
+
+    final List<String> lines = <String>[];
+    for (final _ConnectionTestResult result in results) {
+      lines.add('[${result.success ? 'OK' : 'NG'}] ${result.label}');
+      lines.add('  ${result.summary}');
+      for (final String detail in result.details) {
+        lines.add('  - $detail');
+      }
+      lines.add('');
+    }
+
+    return lines.join('\n').trim();
+  }
+
+  String _formatHeaders(Map<String, String> headers) {
+    if (headers.isEmpty) {
+      return '{}';
+    }
+    return headers.entries
+        .map((MapEntry<String, String> entry) => '${entry.key}: ${entry.value}')
+        .join(', ');
+  }
+
+  String _truncate(String value, int maxLength) {
+    if (value.length <= maxLength) {
+      return value;
+    }
+    return '${value.substring(0, maxLength)}…';
   }
 
   AppSettings _buildSettings() {
