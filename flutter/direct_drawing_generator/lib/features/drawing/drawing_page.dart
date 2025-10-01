@@ -1056,8 +1056,11 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final double screenHeight = MediaQuery.of(context).size.height;
+
     return AlertDialog(
       backgroundColor: const Color(0xff1b2430),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       title: const Row(
         children: <Widget>[
           Icon(Icons.settings, color: Color(0xff4a9eff)),
@@ -1065,64 +1068,199 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
           Text('サーバー設定'),
         ],
       ),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Text('アップロードAPI', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
-              const SizedBox(height: 6),
-              _buildUrlField(
-                controller: _uploadController,
-                label: 'Upload Endpoint',
-                hintText: '例: https://your-server/upload',
-              ),
-              const SizedBox(height: 12),
-              _buildUrlField(
-                controller: _exposeController,
-                label: 'Expose Endpoint',
-                hintText: '例: https://your-server/expose',
-              ),
-              const SizedBox(height: 16),
-              const Text('MCP サーバー', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
-              const SizedBox(height: 6),
-              _buildUrlField(
-                controller: _nanoBananaController,
-                label: 'Nano Banana MCP URL',
-                hintText: '例: https://your-server/mcp/i2i/fal/nano-banana/v1',
-              ),
-              const SizedBox(height: 12),
-              _buildUrlField(
-                controller: _seedreamController,
-                label: 'Seedream MCP URL',
-                hintText: '例: https://your-server/mcp/i2i/fal/bytedance/seedream',
-              ),
-              const SizedBox(height: 16),
-              const Text('認証ヘッダー (任意)', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
-              const SizedBox(height: 6),
-              _buildTextField(
-                controller: _uploadAuthController,
-                label: 'Upload Authorization',
-                hintText: '例: Bearer xxxxx',
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _mcpAuthController,
-                label: 'MCP Authorization',
-                hintText: '例: Bearer yyyyy',
-              ),
-            ],
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: screenHeight * 0.65,
+          maxWidth: 600,
+        ),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                // デフォルトに戻すボタンを上部に配置
+                OutlinedButton.icon(
+                  onPressed: _restoreDefaults,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(color: Color(0xff3b82f6)),
+                  ),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('デフォルト値に戻す'),
+                ),
+                const SizedBox(height: 20),
+
+                // アップロードAPIセクション
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff0f141b),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xff2b3645)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          const Icon(Icons.cloud_upload, color: Color(0xff4a9eff), size: 18),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'アップロードAPI',
+                            style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70, fontSize: 15),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xffff4d5a),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '必須',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '画像アップロード・公開用のエンドポイント',
+                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildUrlField(
+                        controller: _uploadController,
+                        label: 'Upload Endpoint',
+                        hintText: '例: https://your-server/upload',
+                      ),
+                      const SizedBox(height: 12),
+                      _buildUrlField(
+                        controller: _exposeController,
+                        label: 'Expose Endpoint',
+                        hintText: '例: https://your-server/expose',
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // MCPサーバーセクション
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff0f141b),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xff2b3645)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          const Icon(Icons.auto_awesome, color: Color(0xffa855f7), size: 18),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'MCP サーバー',
+                            style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70, fontSize: 15),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xffff4d5a),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '必須',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'AI画像生成用のMCP (Model Context Protocol) サーバー',
+                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildUrlField(
+                        controller: _nanoBananaController,
+                        label: 'Nano Banana MCP URL',
+                        hintText: '例: https://your-server/mcp/i2i/fal/nano-banana/v1',
+                      ),
+                      const SizedBox(height: 12),
+                      _buildUrlField(
+                        controller: _seedreamController,
+                        label: 'Seedream MCP URL',
+                        hintText: '例: https://your-server/mcp/i2i/fal/bytedance/seedream',
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 認証ヘッダーセクション
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff0f141b),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xff2b3645)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          const Icon(Icons.lock, color: Color(0xfffacc15), size: 18),
+                          const SizedBox(width: 8),
+                          const Text(
+                            '認証ヘッダー',
+                            style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70, fontSize: 15),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xff2b3645),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '任意',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white60),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'サーバーが認証を要求する場合のみ設定',
+                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        controller: _uploadAuthController,
+                        label: 'Upload Authorization',
+                        hintText: '例: Bearer xxxxx',
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        controller: _mcpAuthController,
+                        label: 'MCP Authorization',
+                        hintText: '例: Bearer yyyyy',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
       actions: <Widget>[
-        TextButton(
-          onPressed: _restoreDefaults,
-          child: const Text('デフォルトに戻す'),
-        ),
-        const Spacer(),
         OutlinedButton.icon(
           onPressed: _isTesting ? null : _testConnection,
           icon: _isTesting
@@ -1130,7 +1268,7 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
               : const Icon(Icons.network_check),
           label: Text(_isTesting ? 'テスト中...' : '接続テスト'),
         ),
-        const SizedBox(width: 8),
+        const Spacer(),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('キャンセル'),
@@ -1262,7 +1400,7 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
       controller: controller,
       style: const TextStyle(color: Colors.white),
       keyboardType: keyboardType,
-      autovalidateMode: AutovalidateMode.onUserInteraction,
+      autovalidateMode: AutovalidateMode.disabled,
       decoration: InputDecoration(
         labelText: label,
         hintText: hintText,
@@ -1277,6 +1415,14 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Color(0xff4a9eff)),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xffff4d5a)),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xffff4d5a), width: 2),
         ),
       ),
       validator: validator,
