@@ -1069,19 +1069,18 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
           Text('サーバー設定'),
         ],
       ),
-      content: SizedBox(
-        width: screenWidth > 600 ? 600 : screenWidth - 32,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: screenHeight * 0.65,
-          ),
-          child: SingleChildScrollView(
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: screenHeight * 0.7,
+          maxWidth: 600,
+        ),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
                 // デフォルトに戻すボタンを上部に配置
                 OutlinedButton.icon(
                   onPressed: _restoreDefaults,
