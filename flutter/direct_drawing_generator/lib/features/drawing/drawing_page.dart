@@ -1484,8 +1484,8 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
       details.add('レスポンスボディ: $bodySnippet');
       final String summary = '接続に失敗しました (HTTP ${response.statusCode})';
       return _ConnectionTestResult(label: label, success: false, summary: summary, details: details);
-    } catch (Object e) {
-      details.add('例外: $e');
+    } on Object catch (error) {
+      details.add('例外: $error');
       return _ConnectionTestResult(
         label: label,
         success: false,

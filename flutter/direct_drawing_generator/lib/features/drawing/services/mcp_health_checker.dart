@@ -94,7 +94,7 @@ class McpHealthChecker {
         tools: tools,
         sessionId: _sessionId,
       );
-    } catch (Object error, StackTrace stackTrace) {
+    } on Object catch (error, StackTrace stackTrace) {
       logs.add('エラーが発生しました: $error');
       debugPrint('McpHealthChecker error (${endpoint.toString()}): $error\n$stackTrace');
       return McpHealthCheckResult(
@@ -116,7 +116,7 @@ class McpHealthChecker {
   ) async {
     try {
       return await _call(method, params, logs);
-    } catch (Object error) {
+    } on Object catch (error) {
       if (_looksLikeInvalidSessionError(error)) {
         logs.add('セッションが無効と判断。セッションIDをクリアして再試行します');
         _sessionId = null;
@@ -158,7 +158,7 @@ class McpHealthChecker {
       final http.Response response = await _post(body).timeout(timeout);
       _captureSessionFromHeaders(response, logs);
       logs.add('notifications/initialized -> HTTP ${response.statusCode}');
-    } catch (Object error) {
+    } on Object catch (error) {
       logs.add('notifications/initializedの送信に失敗: $error');
     }
   }
@@ -188,7 +188,7 @@ class McpHealthChecker {
 
         // toolsが空であれば次のメソッドも試行
         lastError = Exception('ツール一覧が空でした (method=$method)');
-      } catch (Object error) {
+      } on Object catch (error) {
         logs.add('$method が失敗: $error');
         lastError = error;
       }
@@ -226,7 +226,7 @@ class McpHealthChecker {
     Map<String, dynamic> envelope;
     try {
       envelope = jsonDecode(response.body) as Map<String, dynamic>;
-    } catch (Object error) {
+    } on Object catch (error) {
       throw Exception('JSONパースに失敗しました: $error');
     }
 
