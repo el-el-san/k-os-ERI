@@ -148,10 +148,14 @@ class DrawingController extends ChangeNotifier {
   }
 
   void appendPoint(Offset position) {
-    if (_activeStroke == null) {
+    if (_activeStroke == null || _strokes.isEmpty) {
       return;
     }
-    _activeStroke!.points.add(position);
+    final List<Offset> updatedPoints = List<Offset>.from(_activeStroke!.points)..add(position);
+    final DrawnStroke updatedStroke = _activeStroke!.copyWith(points: updatedPoints);
+
+    _strokes.last = updatedStroke;
+    _activeStroke = updatedStroke;
     notifyListeners();
   }
 

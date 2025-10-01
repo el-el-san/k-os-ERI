@@ -38,6 +38,16 @@ jobs:
       - name: Ensure Android platform scaffolding
         run: flutter create --platforms android --no-pub .
 
+      - name: Set custom Application ID
+        run: |
+          set -euo pipefail
+          GRADLE_FILE="android/app/build.gradle"
+          APP_ID="io.koseri.directdrawing"
+          echo "Setting applicationId to: $APP_ID"
+          sed -i "s/applicationId \".*\"/applicationId \"$APP_ID\"/" "$GRADLE_FILE"
+          echo "Updated android/app/build.gradle:"
+          grep "applicationId" "$GRADLE_FILE"
+
       - name: Provision deterministic signing key
         run: |
           set -euo pipefail

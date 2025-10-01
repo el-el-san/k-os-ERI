@@ -100,15 +100,20 @@ class _DrawingPageState extends State<DrawingPage> {
                             children: <Widget>[
                               SizedBox(
                                 width: 320,
-                                child: _buildControlPanel(context, controller),
+                                child: SingleChildScrollView(
+                                  child: _buildControlPanel(context, controller),
+                                ),
                               ),
                               const SizedBox(width: 16),
                               Expanded(child: _buildCanvasArea(context, controller)),
                             ],
                           )
-                        : Column(
+                        : ListView(
                             children: <Widget>[
-                              Expanded(child: _buildCanvasArea(context, controller)),
+                              AspectRatio(
+                                aspectRatio: 1.0,
+                                child: _buildCanvasArea(context, controller),
+                              ),
                               const SizedBox(height: 16),
                               _buildControlPanel(context, controller),
                             ],
@@ -180,14 +185,12 @@ class _DrawingPageState extends State<DrawingPage> {
 
   Widget _buildControlPanel(BuildContext context, DrawingController controller) {
     final ThemeData theme = Theme.of(context);
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text('Reference Assets', style: theme.textTheme.titleMedium?.copyWith(color: Colors.white70)),
-          const SizedBox(height: 12),
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text('Reference Assets', style: theme.textTheme.titleMedium?.copyWith(color: Colors.white70)),
+        const SizedBox(height: 12),
+        Row(
             children: <Widget>[
               Expanded(
                 child: ElevatedButton.icon(
@@ -444,8 +447,7 @@ class _DrawingPageState extends State<DrawingPage> {
             label: Text(_isSaving ? 'Preparing image...' : 'Save & Share'),
           ),
         ],
-      ),
-    );
+      );
   }
 
   Widget _buildServerSettingsCard(DrawingController controller) {
