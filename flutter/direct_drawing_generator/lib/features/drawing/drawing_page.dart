@@ -1395,13 +1395,16 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
         ),
       );
     } finally {
-      if (!mounted) {
-        return;
+      if (mounted) {
+        setState(() => _isTesting = false);
       }
-
-      setState(() => _isTesting = false);
-      _showConnectionResultDialog(results);
     }
+
+    if (!mounted) {
+      return;
+    }
+
+    await _showConnectionResultDialog(results);
   }
 
   Future<_ConnectionTestResult> _performHttpTest({
@@ -1415,7 +1418,7 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
     final String trimmed = url.trim();
 
     if (trimmed.isEmpty) {
-      final String summary = 'URLが未設定のためテストできません';
+      const String summary = 'URLが未設定のためテストできません';
       details.add('URL: (未設定)');
       details.add('設定画面でURLを入力してください。');
       return _ConnectionTestResult(label: label, success: false, summary: summary, details: details);
@@ -1423,7 +1426,7 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
 
     final Uri? uri = Uri.tryParse(trimmed);
     if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) {
-      final String summary = 'URLが不正です';
+      const String summary = 'URLが不正です';
       details.add('URL: $trimmed');
       details.add('プロトコルとホスト名を含む完全なURLを入力してください。');
       return _ConnectionTestResult(label: label, success: false, summary: summary, details: details);
@@ -1504,7 +1507,7 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
     final String trimmed = url.trim();
 
     if (trimmed.isEmpty) {
-      final String summary = 'URLが未設定のためMCPテストを実行できません';
+      const String summary = 'URLが未設定のためMCPテストを実行できません';
       details.add('URL: (未設定)');
       details.add('MCP URLを設定するとツール一覧を取得できます。');
       return _ConnectionTestResult(label: label, success: false, summary: summary, details: details);
@@ -1512,7 +1515,7 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
 
     final Uri? uri = Uri.tryParse(trimmed);
     if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) {
-      final String summary = 'MCP URLが不正です';
+      const String summary = 'MCP URLが不正です';
       details.add('URL: $trimmed');
       details.add('https:// から始まる正しいMCPエンドポイントを設定してください。');
       return _ConnectionTestResult(label: label, success: false, summary: summary, details: details);
@@ -1565,7 +1568,8 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
   }
 
   Future<void> _showConnectionResultDialog(List<_ConnectionTestResult> results) async {
-    final bool overallSuccess = results.isNotEmpty && results.every((_) => _.success);
+    final bool overallSuccess =
+        results.isNotEmpty && results.every((result) => result.success);
     final String reportText = _buildReportText(results);
 
     if (reportText.isNotEmpty) {

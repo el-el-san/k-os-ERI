@@ -94,9 +94,11 @@ class McpHealthChecker {
         tools: tools,
         sessionId: _sessionId,
       );
-    } on Object catch (error, StackTrace stackTrace) {
+    } on Object catch (error, stackTrace) {
+      final StackTrace trace =
+          stackTrace is StackTrace ? stackTrace : StackTrace.fromString(stackTrace.toString());
       logs.add('エラーが発生しました: $error');
-      debugPrint('McpHealthChecker error (${endpoint.toString()}): $error\n$stackTrace');
+      debugPrint('McpHealthChecker error (${endpoint.toString()}): $error\n$trace');
       return McpHealthCheckResult(
         success: false,
         logs: logs,
