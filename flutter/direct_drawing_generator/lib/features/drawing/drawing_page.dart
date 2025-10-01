@@ -1057,7 +1057,6 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
-    final double screenWidth = MediaQuery.of(context).size.width;
 
     return AlertDialog(
       backgroundColor: const Color(0xff1b2430),
@@ -1261,7 +1260,6 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
             ),
           ),
         ),
-      ),
       actions: <Widget>[
         OutlinedButton.icon(
           onPressed: _isTesting ? null : _testConnection,
