@@ -1057,6 +1057,7 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
+    final double screenWidth = MediaQuery.of(context).size.width;
 
     return AlertDialog(
       backgroundColor: const Color(0xff1b2430),
@@ -1068,12 +1069,13 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
           Text('サーバー設定'),
         ],
       ),
-      content: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: screenHeight * 0.65,
-          maxWidth: 600,
-        ),
-        child: SingleChildScrollView(
+      content: SizedBox(
+        width: screenWidth > 600 ? 600 : screenWidth - 32,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: screenHeight * 0.65,
+          ),
+          child: SingleChildScrollView(
           child: Form(
             key: _formKey,
             child: Column(
