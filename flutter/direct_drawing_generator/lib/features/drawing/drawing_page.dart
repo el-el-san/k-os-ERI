@@ -1076,12 +1076,12 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
             maxHeight: screenHeight * 0.65,
           ),
           child: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
                 // デフォルトに戻すボタンを上部に配置
                 OutlinedButton.icon(
                   onPressed: _restoreDefaults,
@@ -1257,7 +1257,8 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
                     ],
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
