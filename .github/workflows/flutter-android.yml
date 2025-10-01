@@ -36,6 +36,26 @@ jobs:
       - name: Ensure Android platform scaffolding
         run: flutter create --org io.koseri --platforms android --no-pub .
 
+      - name: Fix applicationId to ensure update compatibility
+        run: |
+          set -euo pipefail
+          GRADLE_FILE="android/app/build.gradle"
+          APP_ID="io.koseri.direct_drawing_generator"
+
+          echo "Ensuring applicationId is set to: $APP_ID"
+
+          # Replace applicationId line, handling both formats
+          if grep -q "applicationId" "$GRADLE_FILE"; then
+            # Replace existing applicationId
+            sed -i "s/applicationId[[:space:]]*[=:][[:space:]]*[\"'].*[\"']/applicationId = \"$APP_ID\"/" "$GRADLE_FILE"
+          else
+            # Add applicationId if not present (after namespace or in defaultConfig)
+            sed -i "/defaultConfig {/a \        applicationId = \"$APP_ID\"" "$GRADLE_FILE"
+          fi
+
+          echo "Verification - applicationId in build.gradle:"
+          grep -A2 -B2 "applicationId" "$GRADLE_FILE" || echo "Warning: applicationId not found"
+
       - name: Provision deterministic signing key
         run: |
           set -euo pipefail
@@ -52,14 +72,19 @@ jobs:
           base64 --decode "$KEYSTORE_B64" > "$KEYSTORE_PATH"
           chmod 600 "$KEYSTORE_PATH"
 
-          cat > "$KEY_PROPS" <<EOF
-            storeFile=../app/update-signing.keystore
-            storePassword=koseri123
-            keyAlias=koseri
-            keyPassword=koseri123
-          EOF
+          # Create key.properties without leading spaces
+          {
+            echo "storeFile=../app/update-signing.keystore"
+            echo "storePassword=koseri123"
+            echo "keyAlias=koseri"
+            echo "keyPassword=koseri123"
+          } > "$KEY_PROPS"
 
+          echo "Generated key.properties:"
+          cat "$KEY_PROPS"
+          echo "Keystore file info:"
           ls -l "$KEYSTORE_PATH"
+          sha256sum "$KEYSTORE_PATH"
 
       - name: Align Kotlin stdlib versions
         run: |
