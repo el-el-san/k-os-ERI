@@ -20,8 +20,10 @@ class DrawingController extends ChangeNotifier {
   DrawingController({SettingsRepository? settingsRepository})
       : _settingsRepository = settingsRepository ?? SettingsRepository() {
     _applySettings(AppSettings.defaults(), notify: false);
-    _loadSettings();
   }
+
+  bool _isInitialized = false;
+  bool get isInitialized => _isInitialized;
 
   final SettingsRepository _settingsRepository;
   final List<DrawnStroke> _strokes = <DrawnStroke>[];
@@ -71,6 +73,15 @@ class DrawingController extends ChangeNotifier {
   AppSettings get settings => _settings;
   McpConfig get nanoBananaConfig => _nanoBananaConfig;
   McpConfig get seedreamConfig => _seedreamConfig;
+
+  Future<void> init() async {
+    if (_isInitialized) {
+      return;
+    }
+    await _loadSettings();
+    _isInitialized = true;
+    notifyListeners();
+  }
 
   Future<void> _loadSettings() async {
     final AppSettings loaded = await _settingsRepository.load();

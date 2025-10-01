@@ -46,6 +46,7 @@ class _DrawingPageState extends State<DrawingPage> {
   void initState() {
     super.initState();
     _controller = DrawingController();
+    _controller.init();
   }
 
   @override
@@ -62,6 +63,14 @@ class _DrawingPageState extends State<DrawingPage> {
       value: _controller,
       child: Consumer<DrawingController>(
         builder: (BuildContext context, DrawingController controller, _) {
+          if (!controller.isInitialized) {
+            return const Scaffold(
+              backgroundColor: Color(0xff0f141b),
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
           return LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
               final bool isWide = constraints.maxWidth >= 960;
