@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -1029,6 +1030,7 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
   late final TextEditingController _mcpAuthController;
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  bool _isTesting = false;
 
   @override
   void initState() {
@@ -1120,6 +1122,15 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
           onPressed: _restoreDefaults,
           child: const Text('デフォルトに戻す'),
         ),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: _isTesting ? null : _testConnection,
+          icon: _isTesting
+              ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.network_check),
+          label: Text(_isTesting ? 'テスト中...' : '接続テスト'),
+        ),
+        const SizedBox(width: 8),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('キャンセル'),
@@ -1150,6 +1161,60 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
     }
 
     Navigator.of(context).pop(_buildSettings());
+  }
+
+  Future<void> _testConnection() async {
+    setState(() => _isTesting = true);
+    final String url = _uploadController.text.trim();
+    String? error;
+
+    try {
+      final response = await http.head(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (response.statusCode >= 200 && response.statusCode < 400) {
+        // Success
+      } else {
+        error = 'サーバーから予期しない応答がありました (ステータスコード: ${response.statusCode})';
+      }
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      if (mounted) {
+        setState(() => _isTesting = false);
+        _showConnectionResultDialog(error == null, error);
+      }
+    }
+  }
+
+  Future<void> _showConnectionResultDialog(bool success, String? error) async {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xff1b2430),
+          title: Row(
+            children: <Widget>[
+              Icon(
+                success ? Icons.check_circle : Icons.error,
+                color: success ? const Color(0xff00d4aa) : const Color(0xffff4d5a),
+              ),
+              const SizedBox(width: 12),
+              const Text('接続テスト結果'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              success ? 'サーバーへの接続に成功しました。' : '接続に失敗しました。\n\nエラー: $error',
+            ),
+          ),
+          actions: <Widget>[
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   AppSettings _buildSettings() {

@@ -3,10 +3,8 @@ name: Flutter Android CI
 on:
   workflow_dispatch:
   push:
-    paths:
-      - 'flutter/direct_drawing_generator/**'
-      - '.github/workflows/flutter-android.yml'
-  pull_request:
+    branches:
+      - main
     paths:
       - 'flutter/direct_drawing_generator/**'
       - '.github/workflows/flutter-android.yml'
@@ -36,17 +34,7 @@ jobs:
           flutter-version: '3.22.2'
 
       - name: Ensure Android platform scaffolding
-        run: flutter create --platforms android --no-pub .
-
-      - name: Set custom Application ID
-        run: |
-          set -euo pipefail
-          GRADLE_FILE="android/app/build.gradle"
-          APP_ID="io.koseri.directdrawing"
-          echo "Setting applicationId to: $APP_ID"
-          sed -i "s/applicationId \".*\"/applicationId \"$APP_ID\"/" "$GRADLE_FILE"
-          echo "Updated android/app/build.gradle:"
-          grep "applicationId" "$GRADLE_FILE"
+        run: flutter create --org io.koseri --platforms android --no-pub .
 
       - name: Provision deterministic signing key
         run: |
