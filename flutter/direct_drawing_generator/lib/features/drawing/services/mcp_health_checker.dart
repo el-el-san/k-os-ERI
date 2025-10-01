@@ -95,8 +95,7 @@ class McpHealthChecker {
         sessionId: _sessionId,
       );
     } on Object catch (error, stackTrace) {
-      final StackTrace trace =
-          stackTrace is StackTrace ? stackTrace : StackTrace.fromString(stackTrace.toString());
+      final StackTrace trace = stackTrace as StackTrace;
       logs.add('エラーが発生しました: $error');
       debugPrint('McpHealthChecker error (${endpoint.toString()}): $error\n$trace');
       return McpHealthCheckResult(
@@ -403,24 +402,20 @@ class McpHealthChecker {
     } else if (payload is Map<String, dynamic>) {
       payload.forEach((String key, dynamic value) {
         if (value is Map<String, dynamic>) {
-          final String? name = (value['name'] as String?) ?? key;
+          final String name = (value['name'] as String?) ?? key;
           final String? description =
               (value['description'] ?? value['desc'] ?? value['detail']) as String?;
-          if (name != null) {
-            addTool(name, description);
-          }
+          addTool(name, description);
         } else if (value is String) {
           addTool(key, value);
         } else if (value is List) {
           for (final dynamic nested in value) {
             if (nested is Map<String, dynamic>) {
-              final String? name =
+              final String name =
                   (nested['name'] as String?) ?? (nested['id'] as String?) ?? key;
               final String? description =
                   (nested['description'] ?? nested['desc'] ?? nested['detail']) as String?;
-              if (name != null) {
-                addTool(name, description);
-              }
+              addTool(name, description);
             } else if (nested is String) {
               addTool(nested);
             }
