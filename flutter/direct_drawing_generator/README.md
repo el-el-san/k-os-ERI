@@ -45,6 +45,11 @@ A smoke test is included under `test/widget_test.dart` to validate that the main
 flutter test
 ```
 
+## Android Builds
+
+- Run `ci/setup-android-signing.sh` (requires Flutter in PATH) before the first Android build on each machine. It generates the Android scaffolding if missing, decodes the deterministic keystore, and patches `android/app/build.gradle` to use it.
+- Produce release artifacts with `flutter build apk --release`. The shared keystore ensures APKs install as updates over prior builds.
+
 ## CI / CD
 
 `.github/workflows/flutter-android.yml` で GitHub Actions を定義しており、プッシュ／プルリクエスト時に Flutter の解析・テスト・Android 用 APK ビルドを自動実行します。ビルドごとに `pubspec.yaml` のバージョンが自動で更新され、コミット数とワークフローの実行回数に基づいた単調増加の `buildNumber` が付与されるため、端末への更新インストールが常に可能です。また、CI 内で `ci/update-signing.keystore.base64` から決定論的な署名キーを展開して APK を常に同じ証明書で署名するため、既存インストールとのパッケージ競合が発生しません。生成された APK と `version-info.txt` はワークフローのアーティファクトとして取得できます。

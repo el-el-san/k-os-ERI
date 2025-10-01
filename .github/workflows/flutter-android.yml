@@ -86,6 +86,9 @@ jobs:
           ls -l "$KEYSTORE_PATH"
           sha256sum "$KEYSTORE_PATH"
 
+      - name: Ensure release build signs with deterministic key
+        run: ci/ensure-android-signing.sh
+
       - name: Align Kotlin stdlib versions
         run: |
           cat <<'GRADLE' >> android/app/build.gradle
