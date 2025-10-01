@@ -1028,6 +1028,7 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
   late final TextEditingController _seedreamController;
   late final TextEditingController _uploadAuthController;
   late final TextEditingController _mcpAuthController;
+  final ScrollController _scrollController = ScrollController();
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isTesting = false;
@@ -1051,12 +1052,15 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
     _seedreamController.dispose();
     _uploadAuthController.dispose();
     _mcpAuthController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double dialogWidth = (screenWidth - 32).clamp(280.0, 600.0).toDouble();
 
     return AlertDialog(
       backgroundColor: const Color(0xff1b2430),
@@ -1068,18 +1072,25 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
           Text('サーバー設定'),
         ],
       ),
-      content: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: screenHeight * 0.7,
-          maxWidth: 600,
-        ),
-        child: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
+      content: SizedBox(
+        width: dialogWidth,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: screenHeight * 0.7,
+            minHeight: 0,
+          ),
+          child: Scrollbar(
+            controller: _scrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              padding: const EdgeInsets.only(right: 8),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
                 // デフォルトに戻すボタンを上部に配置
                 OutlinedButton.icon(
                   onPressed: _restoreDefaults,
@@ -1260,6 +1271,7 @@ class _ServerSettingsDialogState extends State<_ServerSettingsDialog> {
             ),
           ),
         ),
+      ),
       actions: <Widget>[
         OutlinedButton.icon(
           onPressed: _isTesting ? null : _testConnection,
