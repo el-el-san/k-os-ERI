@@ -95,7 +95,7 @@ class McpHealthChecker {
         sessionId: _sessionId,
       );
     } on Object catch (error, stackTrace) {
-      final StackTrace trace = stackTrace as StackTrace;
+      final StackTrace trace = stackTrace;
       logs.add('エラーが発生しました: $error');
       debugPrint('McpHealthChecker error (${endpoint.toString()}): $error\n$trace');
       return McpHealthCheckResult(
