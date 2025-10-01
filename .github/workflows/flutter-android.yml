@@ -162,6 +162,32 @@ jobs:
           rm -f build/app/outputs/apk/release/*.apk
           echo "Cleanup complete"
 
+      - name: Verify APK signature fingerprint
+        run: |
+          set -euo pipefail
+          APK=$(find build/app/outputs/flutter-apk -maxdepth 1 -type f -name 'direct-drawing-generator-*.apk' | head -n 1)
+          if [ -z "${APK:-}" ]; then
+            echo "::error::APK not found in build/app/outputs/flutter-apk" >&2
+            exit 1
+          fi
+
+          echo "Verifying signature for: $APK"
+          EXPECTED=$(keytool -list -v -storetype PKCS12 -keystore android/app/update-signing.keystore -storepass koseri123 |
+            awk '/SHA256:/ {gsub(/\r/, ""); print $2; exit}')
+          if [ -z "${EXPECTED:-}" ]; then
+            echo "::error::Failed to derive expected fingerprint from keystore" >&2
+            exit 1
+          fi
+
+          echo "Expected SHA-256 fingerprint: $EXPECTED"
+          keytool -printcert -jarfile "$APK" | tee apk-signature.txt
+          if ! grep -F "$EXPECTED" apk-signature.txt >/dev/null; then
+            echo "::error::APK fingerprint mismatch" >&2
+            exit 1
+          fi
+
+          echo "Signature fingerprint verified"
+
       - name: Inspect APK outputs
         run: |
           echo "Final APK files:"
