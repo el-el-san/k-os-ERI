@@ -95,6 +95,11 @@
       "url": "{BASE_URL}/t2v/fal/veo3/fast",
       "description": "Veo3 Fast Text-to-Video via Kamui Code ⭐"
     },
+    "t2v-kamui-openai-sora": {
+      "type": "http",
+      "url": "{BASE_URL}/t2v/openai/sora",
+      "description": "OpenAI Sora Text-to-Video via Kamui Code ⭐"
+    },
     "t2v-kamui-wan-v2-2-5b-fast": {
       "type": "http",
       "url": "{BASE_URL}/t2v/fal/wan/v2.2-5b/text-to-video/fast-wan",

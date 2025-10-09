@@ -59,10 +59,12 @@
           <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
             <label for="videoModelSelect" style="font-size: 13px; font-weight: 600; color: #334155;">Animation Model:</label>
             <select id="videoModelSelect" class="story-gen__result-scene-select" style="max-width: 200px;">
-              <option value="veo3" selected>VEO3 (Default)</option>
+              <option value="veo3">VEO3</option>
               <option value="hailuo-02">Hailuo-02</option>
+              <option value="sora" selected>Sora (OpenAI)</option>
             </select>
           </div>
+          <div id="storyGenSubmitOptions" class="story-gen__submit-options" aria-live="polite"></div>
           <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
             <label for="storyGenTargetSceneSelect" style="font-size: 13px; font-weight: 600; color: #334155;">出力先シーン:</label>
             <select id="storyGenTargetSceneSelect" class="story-gen__result-scene-select" style="flex-grow: 1;">
@@ -836,6 +838,53 @@
       max-width: 100px;
       height: 32px;
     }
+    .story-gen__submit-options {
+      display: grid;
+      gap: 8px;
+      background: #f8fafc;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .story-gen__submit-options-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .story-gen__submit-options-body {
+      display: grid;
+      gap: 8px;
+    }
+    .story-gen__submit-options-field {
+      display: grid;
+      gap: 4px;
+    }
+    .story-gen__submit-options-field label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+    }
+    .story-gen__submit-options-field input,
+    .story-gen__submit-options-field select {
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 12px;
+      background: #fff;
+      color: #1e293b;
+    }
+    .story-gen__submit-options-note {
+      font-size: 11px;
+      color: #0f172a;
+      background: #e0f2fe;
+      border: 1px solid #bae6fd;
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
     </style>
 
     <script src="/js/mcp-client.js?v=0.1.0"></script>
@@ -869,6 +918,34 @@
         const cutMeta = document.getElementById('storyGenCut');
         const dateMeta = document.getElementById('storyGenDate');
         const targetSceneSelect = document.getElementById('storyGenTargetSceneSelect');
+        const submitOptionsContainer = document.getElementById('storyGenSubmitOptions');
+        const submitOptionDefaults = {
+          veo3: { duration_seconds: '4' },
+          'hailuo-02': { duration_seconds: '4' },
+          sora: { model: 'sora-2', seconds: '8', size: '1280x720' }
+        };
+        const submitOptionSchemas = {
+          veo3: [
+            { key: 'duration_seconds', label: 'Duration (seconds)', type: 'number', min: 1, step: 1, default: submitOptionDefaults.veo3.duration_seconds }
+          ],
+          'hailuo-02': [
+            { type: 'note', text: 'エンドイメージを設定するとフェードが滑らかになります。' },
+            { key: 'duration_seconds', label: 'Duration (seconds)', type: 'number', min: 1, step: 1, default: submitOptionDefaults['hailuo-02'].duration_seconds }
+          ],
+          sora: [
+            { type: 'note', text: '入力画像が無くてもテキストのみで生成できます。必要に応じて下記オプションを調整してください。' },
+            { key: 'model', label: 'Model Variant', type: 'select', options: [
+              { value: 'sora-2', label: 'sora-2' },
+              { value: 'sora-2-pro', label: 'sora-2-pro' }
+            ], default: submitOptionDefaults.sora.model },
+            { key: 'seconds', label: 'Duration (seconds)', type: 'number', min: 1, step: 1, default: submitOptionDefaults.sora.seconds },
+            { key: 'size', label: 'Resolution', type: 'text', placeholder: '例: 1280x720', default: submitOptionDefaults.sora.size }
+          ]
+        };
+
+        function cloneSubmitOptionDefaults() {
+          return Object.fromEntries(Object.entries(submitOptionDefaults).map(([k, v]) => [k, { ...v }]));
+        }
 
         // State
         let mcpConfigManager;
@@ -880,7 +957,8 @@
             inputTray: [],
             results: [],
             isGenerating: false,
-            selectedVideoModel: 'veo3',
+            selectedVideoModel: 'sora',
+            submitOptions: cloneSubmitOptionDefaults()
           }
         };
 
@@ -889,8 +967,119 @@
           return { id: crypto.randomUUID(), prompt: '', script: '', time: '3秒', mediaSrc: '', mediaAlt: 'Scene preview', mediaType: 'image', isGenerating: false, endImageSrc: '', ...overrides };
         }
         const escapeHtml = (str) => String(str ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-        const guessMediaType = (src) => (/\.(mp4|webm|mov)$/i.test(src) ? 'video' : 'image');
+        const guessMediaType = (src) => {
+          const cleaned = String(src || '').split('?')[0].split('#')[0];
+          return (/\.(mp4|webm|mov)$/i.test(cleaned) ? 'video' : 'image');
+        };
         const chunk = (list, size) => Array.from({ length: Math.ceil(list.length / size) }, (v, i) => list.slice(i * size, i * size + size));
+
+        function ensureSubmitOptions(model) {
+          if (!state.generation.submitOptions) state.generation.submitOptions = cloneSubmitOptionDefaults();
+          if (!state.generation.submitOptions[model]) state.generation.submitOptions[model] = {};
+          return state.generation.submitOptions[model];
+        }
+
+        function getMergedSubmitOptions(model) {
+          const defaults = submitOptionDefaults[model] || {};
+          const stored = ensureSubmitOptions(model);
+          return { ...defaults, ...stored };
+        }
+
+        function updateSubmitOption(model, key, value) {
+          const bucket = ensureSubmitOptions(model);
+          if (value == null) {
+            delete bucket[key];
+            return;
+          }
+          const str = typeof value === 'string' ? value.trim() : value;
+          if (str === '') delete bucket[key];
+          else bucket[key] = str;
+        }
+
+        function renderSubmitOptions() {
+          if (!submitOptionsContainer) return;
+          const model = state.generation.selectedVideoModel;
+          const schema = submitOptionSchemas[model] || [];
+          submitOptionsContainer.innerHTML = '';
+
+          const title = document.createElement('div');
+          title.className = 'story-gen__submit-options-title';
+          title.textContent = 'Submit Options';
+          submitOptionsContainer.appendChild(title);
+
+          const body = document.createElement('div');
+          body.className = 'story-gen__submit-options-body';
+          submitOptionsContainer.appendChild(body);
+
+          if (schema.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.fontSize = '11px';
+            empty.style.color = '#94a3b8';
+            empty.textContent = 'このモデルで追加設定は不要です。';
+            body.appendChild(empty);
+            return;
+          }
+
+          const options = ensureSubmitOptions(model);
+
+          schema.forEach((field, idx) => {
+            if (field.type === 'note') {
+              const note = document.createElement('div');
+              note.className = 'story-gen__submit-options-note';
+              note.textContent = field.text || '';
+              body.appendChild(note);
+              return;
+            }
+
+            const fieldWrapper = document.createElement('div');
+            fieldWrapper.className = 'story-gen__submit-options-field';
+            const controlId = `submitOption-${model}-${field.key || idx}`;
+
+            const label = document.createElement('label');
+            label.setAttribute('for', controlId);
+            label.textContent = field.label || field.key || 'Option';
+            fieldWrapper.appendChild(label);
+
+            let control;
+            const currentValue = options[field.key] ?? field.default ?? '';
+            if (field.type === 'select') {
+              control = document.createElement('select');
+              (field.options || []).forEach(opt => {
+                const optionEl = document.createElement('option');
+                optionEl.value = opt.value;
+                optionEl.textContent = opt.label || opt.value;
+                control.appendChild(optionEl);
+              });
+              if (currentValue && !(field.options || []).some(opt => opt.value === currentValue)) {
+                const custom = document.createElement('option');
+                custom.value = currentValue;
+                custom.textContent = `${currentValue} (custom)`;
+                control.appendChild(custom);
+              }
+              control.value = currentValue || ((field.options || [])[0]?.value || '');
+            } else {
+              control = document.createElement('input');
+              control.type = field.type || 'text';
+              if (field.placeholder) control.placeholder = field.placeholder;
+              if (field.min != null) control.min = field.min;
+              if (field.max != null) control.max = field.max;
+              if (field.step != null) control.step = field.step;
+              control.value = currentValue || '';
+            }
+
+            control.id = controlId;
+            control.dataset.model = model;
+            if (field.key) control.dataset.optionKey = field.key;
+
+            const eventName = (field.type === 'number' || field.type === 'select') ? 'change' : 'input';
+            control.addEventListener(eventName, (event) => {
+              updateSubmitOption(model, field.key, event.target.value);
+            });
+
+            fieldWrapper.appendChild(control);
+            body.appendChild(fieldWrapper);
+          });
+        }
 
         function showToast(message) {
             const toast = document.createElement('div');
@@ -914,6 +1103,7 @@
           updateInputTray();
           renderTargetSceneSelect();
           updateGenerateButtonsState();
+          renderSubmitOptions();
         }
 
         function renderTargetSceneSelect() {
@@ -1200,6 +1390,7 @@
 
         // ===== MCP / Uploading Helpers (ported from direct-drawing) =====
         const uploadBaseCandidates = (window.__UPLOAD_BASE_CANDIDATES__ = window.__UPLOAD_BASE_CANDIDATES__ || ['http://localhost:3001', 'http://127.0.0.1:3001']);
+        const STORY_GEN_API_BASE = 'http://localhost:3001';
         const toAbsoluteUrl = (u) => { try { return new URL(u, document.baseURI).href; } catch(e) { return u; } };
         async function postJson(endpoint, payload) {
             const resp = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -1255,11 +1446,114 @@
             return null;
           } catch(_) { return null; }
         };
+        const extractCurlCommand = (value) => {
+          try {
+            if (!value) return null;
+            if (typeof value === 'string') {
+              const text = value.trim();
+              if (!text) return null;
+              if (text.startsWith('{') && text.endsWith('}')) {
+                try {
+                  const parsed = JSON.parse(text);
+                  const nested = extractCurlCommand(parsed);
+                  if (nested) return nested;
+                } catch (_) {}
+              }
+              const fenced = text.match(/```(?:bash|shell)?\s*([\s\S]*?)```/i);
+              if (fenced && fenced[1]) {
+                const candidate = fenced[1].trim();
+                if (/^curl\s+/i.test(candidate)) return candidate;
+              }
+              if (/^curl\s+/i.test(text)) return text;
+              const inline = text.match(/curl\s+[^\n\r]+/i);
+              if (inline) return inline[0].trim();
+              return null;
+            }
+            if (Array.isArray(value)) {
+              for (const item of value) {
+                const nested = extractCurlCommand(item);
+                if (nested) return nested;
+              }
+              return null;
+            }
+            if (typeof value === 'object') {
+              if (typeof value.curl_command === 'string' && value.curl_command.trim()) {
+                return value.curl_command.trim();
+              }
+              if (typeof value.command === 'string' && /^curl\s+/i.test(value.command.trim())) {
+                return value.command.trim();
+              }
+              if (typeof value.text === 'string') {
+                const nestedText = extractCurlCommand(value.text);
+                if (nestedText) return nestedText;
+              }
+              for (const v of Object.values(value)) {
+                const nested = extractCurlCommand(v);
+                if (nested) return nested;
+              }
+            }
+            return null;
+          } catch (_) {
+            return null;
+          }
+        };
+
+        async function downloadSoraVideo({ curlCommand, videoId }) {
+          const payload = { curl_command: curlCommand, video_id: videoId };
+          const endpoint = `${STORY_GEN_API_BASE}/api/story-gen/sora/download`;
+          return await postJson(endpoint, payload);
+        }
+
 
         function pickRequestId(res){
           try {
-            const cands = [res?.result?.request_id, res?.result?.id, res?.request_id, res?.id];
+            const cands = [
+              res?.result?.video_id,
+              res?.result?.request_id,
+              res?.result?.id,
+              res?.video_id,
+              res?.request_id,
+              res?.id
+            ];
             for (const v of cands){ if (typeof v === 'string' && v.trim()) return v.trim(); }
+
+            const texts = [];
+            const collectText = (value) => {
+              if (!value) return;
+              if (typeof value === 'string') texts.push(value);
+              else if (Array.isArray(value)) value.forEach(collectText);
+              else if (typeof value === 'object') {
+                Object.values(value).forEach(collectText);
+              }
+            };
+            collectText(res?.result?.content);
+            collectText(res?.content);
+            collectText(res);
+
+            for (const rawText of texts) {
+              const textValue = String(rawText);
+              const codeMatch = textValue.match(/```(?:json)?\s*([\s\S]*?)```/i);
+              if (codeMatch && codeMatch[1]) {
+                try {
+                  const parsed = JSON.parse(codeMatch[1]);
+                  const nested = pickRequestId(parsed);
+                  if (nested) return nested;
+                } catch(_) { }
+              }
+              const trimmed = textValue.trim();
+              if (!trimmed) continue;
+              if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                try {
+                  const parsed = JSON.parse(trimmed);
+                  const nested = pickRequestId(parsed);
+                  if (nested) return nested;
+                } catch(_) { }
+              }
+              const idKeyMatch = trimmed.match(/"id"\s*:\s*"([^"]+)"/i);
+              if (idKeyMatch && idKeyMatch[1]) return idKeyMatch[1];
+              const videoMatch = trimmed.match(/video_[0-9a-f]{10,}/i);
+              if (videoMatch) return videoMatch[0];
+            }
             return null;
           } catch(_){ return null; }
         }
@@ -1343,11 +1637,16 @@
             }
             const reGeneric = /(request[\s_-]*id|task[\s_-]*id|job[\s_-]*id|id)\s*[:=]\s*[*_`>~"“”'\-]*\s*([A-Za-z0-9._\-]{6,})/i;
             for (const t of txts){
-              const m = String(t).match(reGeneric);
+              const str = String(t);
+              const videoIdFromKey = str.match(/"video_id"\s*:\s*"([^"]+)"/i);
+              if (videoIdFromKey && videoIdFromKey[1]) return videoIdFromKey[1];
+              const m = str.match(reGeneric);
               if (m && m[2]){
                 const v = m[2].trim();
                 if (!/^\d+$/.test(v)) return v;
               }
+              const video = str.match(/video_[0-9a-f]{10,}/i);
+              if (video) return video[0];
             }
             return null;
           } catch(_){ return null; }
@@ -1373,15 +1672,88 @@
                 alert('アニメーションさせるには、シーンにプロンプトを入力してください。');
                 return;
             }
-            if (!scene.mediaSrc) {
-                alert('アニメーションさせるには、シーンに画像を設定してください。');
-                return;
-            }
-            if (guessMediaType(scene.mediaSrc) !== 'image') {
-                alert('動画から動画を生成することはまだできません。画像を選択してください。');
-                return;
-            }
+            const model = state.generation.selectedVideoModel;
+            const modelSettingsMap = {
+                    veo3: {
+                        serverFilter: 'veo3/fast',
+                        toolPrefix: 'veo3_fast_i2v',
+                        needsEndImage: false,
+                        requiresSourceImage: true,
+                        statusParamKey: 'request_id',
+                        resultParamKey: 'request_id',
+                        pollIterations: 18,
+                        pollDelayMs: 10000,
+                        buildSubmitArgs: ({ prompt, uploadedUrl, uploadedEndImageUrl, options }) => {
+                            const durationNum = Number(options.duration_seconds);
+                            const durationSeconds = Number.isFinite(durationNum) && durationNum > 0 ? durationNum : 4;
+                            const args = { prompt, image_url: uploadedUrl, duration_seconds: durationSeconds };
+                            if (uploadedEndImageUrl) args.end_image_url = uploadedEndImageUrl;
+                            return args;
+                        }
+                    },
+                    'hailuo-02': {
+                        serverFilter: 'hailuo-02/pro',
+                        toolPrefix: 'hailuo_02',
+                        needsEndImage: true,
+                        requiresSourceImage: true,
+                        statusParamKey: 'request_id',
+                        resultParamKey: 'request_id',
+                        pollIterations: 36,
+                        pollDelayMs: 10000,
+                        buildSubmitArgs: ({ prompt, uploadedUrl, uploadedEndImageUrl, options }) => {
+                            const durationNum = Number(options.duration_seconds);
+                            const durationSeconds = Number.isFinite(durationNum) && durationNum > 0 ? durationNum : 4;
+                            const args = { prompt, image_url: uploadedUrl, duration_seconds: durationSeconds };
+                            if (uploadedEndImageUrl) args.end_image_url = uploadedEndImageUrl;
+                            return args;
+                        }
+                    },
+                    sora: {
+                        serverFilter: 'openai/sora',
+                        toolPrefix: 'openai_sora',
+                        needsEndImage: false,
+                        requiresSourceImage: false,
+                        statusParamKey: 'video_id',
+                        resultParamKey: 'video_id',
+                        pollIterations: 24,
+                        pollDelayMs: 10000,
+                        buildSubmitArgs: ({ prompt, uploadedUrl, options }) => {
+                            const modelVariant = options.model || 'sora-2';
+                            const secondsValue = options.seconds || '8';
+                            const sizeValue = options.size || '1280x720';
+                            const args = {
+                                prompt,
+                                model: modelVariant,
+                                seconds: String(secondsValue),
+                                size: sizeValue
+                            };
+                            if (uploadedUrl) args.input_reference = uploadedUrl;
+                            return args;
+                        }
+                    }
+                };
+                const modelSettings = modelSettingsMap[model];
+                if (!modelSettings) {
+                    throw new Error(`未対応の動画モデルです: ${model}`);
+                }
 
+                const mergedOptions = getMergedSubmitOptions(model);
+                storyGenLog('使用オプション: ' + JSON.stringify(mergedOptions));
+                const requiresSourceImage = modelSettings.requiresSourceImage !== false;
+                const hasSceneImage = !!scene.mediaSrc;
+                if (requiresSourceImage) {
+                    if (!hasSceneImage) {
+                        alert('このモデルでアニメーションするには、シーンに画像を設定してください。');
+                        return;
+                    }
+                    if (guessMediaType(scene.mediaSrc) !== 'image') {
+                        alert('現在選択されているメディアは動画です。静止画を選択してください。');
+                        return;
+                    }
+                } else if (hasSceneImage && guessMediaType(scene.mediaSrc) !== 'image') {
+                    alert('Sora では静止画のみ入力フレームとして利用できます。画像を選択するか、入力をクリアしてください。');
+                    return;
+                }
             scene.isGenerating = true;
             renderAll();
 
@@ -1394,37 +1766,26 @@
                 mediaPreviewEl.appendChild(loadingOverlay);
             }
 
-            const model = state.generation.selectedVideoModel;
             storyGenLog(`🚀 ${model} アニメーション生成開始...`);
 
             try {
-                // Determine model-specific settings
-                const modelSettings = {
-                    veo3: {
-                        serverFilter: 'veo3/fast',
-                        toolPrefix: 'veo3_fast_i2v',
-                        needsEndImage: false
-                    },
-                    'hailuo-02': {
-                        serverFilter: 'hailuo-02/pro',
-                        toolPrefix: 'hailuo_02',
-                        needsEndImage: true
-                    }
-                }[model];
-
-                if (!modelSettings) {
-                    throw new Error(`未対応の動画モデルです: ${model}`);
-                }
 
                 // Upload necessary images
-                storyGenLog('画像をアップロード中...');
-                const uploadedUrl = await uploadOne(scene.mediaSrc);
+                let uploadedUrl = null;
+                if (hasSceneImage) {
+                    storyGenLog('画像をアップロード中...');
+                    uploadedUrl = await uploadOne(scene.mediaSrc);
+                    storyGenLog(`メイン画像アップロード完了: ${uploadedUrl}`);
+                } else {
+                    storyGenLog('入力画像なしで生成を実行します。');
+                }
                 let uploadedEndImageUrl = null;
                 if (modelSettings.needsEndImage && scene.endImageSrc) {
                     uploadedEndImageUrl = await uploadOne(scene.endImageSrc);
                     storyGenLog(`エンドイメージをアップロード: ${uploadedEndImageUrl}`);
+                } else if (modelSettings.needsEndImage && !scene.endImageSrc) {
+                    storyGenLog(`⚠️ エンドイメージが未設定です (${model})`);
                 }
-                storyGenLog(`メイン画像アップロード完了: ${uploadedUrl}`);
 
                 // Find server
                 const servers = mcpConfigManager.getServers();
@@ -1450,31 +1811,43 @@
                 await client.initialize();
 
                 // Find tools and build arguments
-                const tools = (await client.listTools()).result.tools;
-                const submitTool = tools.find(t => t.name.includes(`${modelSettings.toolPrefix}_submit`)).name;
-                const statusTool = tools.find(t => t.name.includes(`${modelSettings.toolPrefix}_status`)).name;
-                const resultTool = tools.find(t => t.name.includes(`${modelSettings.toolPrefix}_result`)).name;
+                const toolsList = await client.listTools();
+                const tools = (toolsList && toolsList.result && Array.isArray(toolsList.result.tools)) ? toolsList.result.tools : [];
+                const submitToolEntry = tools.find(t => t.name && t.name.includes(`${modelSettings.toolPrefix}_submit`));
+                const statusToolEntry = tools.find(t => t.name && t.name.includes(`${modelSettings.toolPrefix}_status`));
+                const resultToolEntry = tools.find(t => t.name && t.name.includes(`${modelSettings.toolPrefix}_result`));
 
-                const submitArgs = { prompt, image_url: uploadedUrl, duration_seconds: 4 };
-                if (uploadedEndImageUrl) {
-                    submitArgs.end_image_url = uploadedEndImageUrl;
+                if (!submitToolEntry || !statusToolEntry || !resultToolEntry) {
+                    throw new Error('MCPツール定義が見つかりませんでした。tools/listの結果を確認してください。');
                 }
+
+                const submitTool = submitToolEntry.name;
+                const statusTool = statusToolEntry.name;
+                const resultTool = resultToolEntry.name;
+
+                const submitArgs = modelSettings.buildSubmitArgs({ prompt, uploadedUrl, uploadedEndImageUrl, options: mergedOptions, scene });
                 storyGenLog(`Submit tool: ${submitTool} with args: ${JSON.stringify(submitArgs)}`);
 
                 const raw = await rawCallTool(client, mcpUrl, submitTool, submitArgs);
 
                 const requestId = pickRequestId(raw.obj) || extractRequestIdFromText((raw.obj && raw.obj.result) || raw.obj) || extractRequestIdFromText(raw.txt) || raw.headers['x-request-id'] || raw.headers['request-id'] || raw.headers['mcp-request-id'];
-                storyGenLog(`Request ID: ${requestId}`);
+                const statusParamKey = modelSettings.statusParamKey || 'request_id';
+                const resultParamKey = modelSettings.resultParamKey || statusParamKey;
+                const idLabel = statusParamKey === 'video_id' ? 'Video ID' : 'Request ID';
+                storyGenLog(`${idLabel}: ${requestId}`);
 
                 if (!requestId) {
-                    throw new Error('レスポンスからRequest IDを抽出できませんでした。');
+                    throw new Error('レスポンスからID (video_id / request_id) を抽出できませんでした。');
                 }
 
                 let isDone = false;
-                const pollingIterations = model === 'hailuo-02' ? 36 : 18; // 6 mins for hailuo, 3 for others
+                const pollingIterations = modelSettings.pollIterations ?? 18;
+                const pollDelayMs = modelSettings.pollDelayMs ?? 10000;
                 for (let i = 0; i < pollingIterations; i++) {
-                    await new Promise(resolve => setTimeout(resolve, 10000));
-                    const statusResRaw = await rawCallTool(client, mcpUrl, statusTool, { request_id: requestId });
+                    await new Promise(resolve => setTimeout(resolve, pollDelayMs));
+                    const statusArgs = { [statusParamKey]: requestId };
+                    if (statusParamKey !== 'video_id' && statusParamKey !== 'request_id') statusArgs.request_id = requestId;
+                    const statusResRaw = await rawCallTool(client, mcpUrl, statusTool, statusArgs);
                     const status = extractStatusState(statusResRaw.obj || statusResRaw.txt);
                     storyGenLog(`ステータス: ${status || '(不明)'}`);
                     if (status === 'DONE') { isDone = true; break; }
@@ -1483,8 +1856,31 @@
 
                 if (!isDone) throw new Error('生成がタイムアウトしました。');
 
-                const resultRes = await client.callTool(resultTool, { request_id: requestId });
-                const resultUrl = extractAnyUrl(resultRes.result);
+                const resultArgs = { [resultParamKey]: requestId };
+                if (resultParamKey !== 'video_id' && resultParamKey !== 'request_id') resultArgs.request_id = requestId;
+                storyGenLog(`Result tool: ${resultTool} with args: ${JSON.stringify(resultArgs)}`);
+                const resultResRaw = await rawCallTool(client, mcpUrl, resultTool, resultArgs);
+                const resultPayload = (resultResRaw.obj && resultResRaw.obj.result) ? resultResRaw.obj.result : resultResRaw.obj;
+                let resultUrl = extractAnyUrl(resultPayload);
+                const curlCommandRaw = extractCurlCommand(resultPayload) || extractCurlCommand(resultResRaw.obj) || extractCurlCommand(resultResRaw.txt);
+                if (curlCommandRaw) {
+                    const trimmedCurl = curlCommandRaw.trim();
+                    const normalizedForLog = trimmedCurl.replace(/\\\s*[\r\n]+/g, ' ').trim();
+                    const preview = normalizedForLog.length > 180 ? normalizedForLog.slice(0, 180) + '...' : normalizedForLog;
+                    storyGenLog(`curlコマンドを検出: ${preview}`);
+                    try {
+                        const downloadInfo = await downloadSoraVideo({ curlCommand: trimmedCurl, videoId: requestId });
+                        if (downloadInfo && downloadInfo.local_url) {
+                            resultUrl = downloadInfo.local_url;
+                            storyGenLog(`🎬 ダウンロード完了: ${downloadInfo.local_url}`);
+                        } else {
+                            throw new Error('Sora動画のダウンロード結果が不正です。');
+                        }
+                    } catch (downloadErr) {
+                        storyGenLog(`❌ curlダウンロード失敗: ${downloadErr.message}`);
+                        throw downloadErr;
+                    }
+                }
                 if (!resultUrl) throw new Error('結果URLが見つかりませんでした。');
 
                 handleGenerationResult(scene, resultUrl);
@@ -1578,13 +1974,18 @@
 
                 const raw = await rawCallTool(client, mcpUrl, submitTool, submitArgs);
                 const requestId = pickRequestId(raw.obj) || extractRequestIdFromText((raw.obj && raw.obj.result) || raw.obj) || extractRequestIdFromText(raw.txt) || raw.headers['x-request-id'] || raw.headers['request-id'] || raw.headers['mcp-request-id'];
-                if (!requestId) throw new Error('レスポンスからRequest IDを抽出できませんでした。');
-                storyGenLog(`Request ID: ${requestId}`);
+                if (!requestId) throw new Error('レスポンスからID (video_id / request_id) を抽出できませんでした。');
+                const statusParamKey = toolFilters.statusParamKey || 'request_id';
+                const resultParamKey = toolFilters.resultParamKey || statusParamKey;
+                const idLabel = statusParamKey === 'video_id' ? 'Video ID' : 'Request ID';
+                storyGenLog(`${idLabel}: ${requestId}`);
 
                 let isDone = false;
                 for (let i = 0; i < 30; i++) {
                     await new Promise(resolve => setTimeout(resolve, 5000));
-                    const statusResRaw = await rawCallTool(client, mcpUrl, statusTool, { request_id: requestId });
+                    const statusArgs = { [statusParamKey]: requestId };
+                    if (statusParamKey !== 'video_id' && statusParamKey !== 'request_id') statusArgs.request_id = requestId;
+                    const statusResRaw = await rawCallTool(client, mcpUrl, statusTool, statusArgs);
                     const status = extractStatusState(statusResRaw.obj || statusResRaw.txt);
                     storyGenLog(`ステータス: ${status || '(不明)'}`);
                     if (status === 'DONE') { isDone = true; break; }
@@ -1593,8 +1994,12 @@
 
                 if (!isDone) throw new Error('生成がタイムアウトしました。');
 
-                const resultRes = await client.callTool(resultTool, { request_id: requestId });
-                const resultUrl = extractAnyUrl(resultRes.result);
+                const resultArgs = { [resultParamKey]: requestId };
+                if (resultParamKey !== 'video_id' && resultParamKey !== 'request_id') resultArgs.request_id = requestId;
+                storyGenLog(`Result tool: ${resultTool} with args: ${JSON.stringify(resultArgs)}`);
+                const resultResRaw = await rawCallTool(client, mcpUrl, resultTool, resultArgs);
+                const resultPayload = (resultResRaw.obj && resultResRaw.obj.result) ? resultResRaw.obj.result : resultResRaw.obj;
+                const resultUrl = extractAnyUrl(resultPayload);
                 if (!resultUrl) throw new Error('結果URLが見つかりませんでした。');
 
                 handleGenerationResult(scene, resultUrl);
@@ -1622,12 +2027,15 @@
           // DOM Elements
           const toggles = app.querySelectorAll('[data-view-mode]');
           const videoModelSelect = document.getElementById('videoModelSelect');
+          if (videoModelSelect) videoModelSelect.value = state.generation.selectedVideoModel;
+          renderSubmitOptions();
 
           // Event Listeners
           targetSceneSelect.addEventListener('change', updateGenerateButtonsState);
           videoModelSelect.addEventListener('change', (e) => {
             state.generation.selectedVideoModel = e.target.value;
             storyGenLog(`Animation model changed to: ${e.target.value}`);
+            renderSubmitOptions();
           });
           addSceneBtn.addEventListener('click', () => { state.scenes.push(createScene()); renderAll(); });
           resetBtn.addEventListener('click', () => { if(confirm('全てのシーンをリセットしますか？')) { state.scenes = [createScene()]; state.selectedSceneId = null; renderAll(); } });

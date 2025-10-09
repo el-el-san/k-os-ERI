@@ -48,18 +48,47 @@ const JSON_LIMIT = process.env.JSON_LIMIT || '25mb';
 app.use(express.json({ limit: JSON_LIMIT }));
 
 // Helper: fetch a URL into Buffer
-async function fetchBuffer(inputUrl){
+async function fetchBuffer(inputUrl, options = {}){
+  const opts = options || {};
+  const method = opts.method || 'GET';
+  const headersInput = opts.headers || {};
+  const maxRedirects = Number.isFinite(opts.maxRedirects) ? opts.maxRedirects : 3;
+
   // data URL 対応
   if (/^data:/i.test(inputUrl)) {
     const [, meta, b64] = String(inputUrl).match(/^data:([^;,]+)?;base64,(.+)$/i) || [];
     if (!b64) throw new Error('unsupported data URL');
     return Buffer.from(b64, 'base64');
   }
+
   const u = new URL(inputUrl);
+  const headers = {};
+  Object.entries(headersInput).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    const normalizedKey = String(key);
+    const normalizedValue = Array.isArray(value) ? value.join(', ') : String(value);
+    if (normalizedKey) headers[normalizedKey] = normalizedValue;
+  });
+
+  const requestOptions = {
+    method,
+    hostname: u.hostname,
+    port: u.port || (u.protocol === 'https:' ? 443 : 80),
+    path: u.pathname + (u.search || ''),
+    headers
+  };
+
   const lib = (u.protocol === 'https:') ? https : http;
-  return new Promise((resolve, reject) => {
-    const req = lib.request({ method: 'GET', hostname: u.hostname, port: u.port || (u.protocol==='https:'?443:80), path: u.pathname + (u.search||'') }, (res) => {
-      if (res.statusCode && res.statusCode >= 400) { reject(new Error('download failed: '+res.statusCode)); return; }
+
+  return await new Promise((resolve, reject) => {
+    const req = lib.request(requestOptions, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers && res.headers.location && maxRedirects > 0) {
+        const redirectUrl = new URL(res.headers.location, u).toString();
+        res.resume();
+        fetchBuffer(redirectUrl, { method, headers, maxRedirects: maxRedirects - 1 }).then(resolve).catch(reject);
+        return;
+      }
+      if (res.statusCode && res.statusCode >= 400) { reject(new Error('download failed: ' + res.statusCode)); return; }
       const chunks = [];
       res.on('data', (c)=>chunks.push(c));
       res.on('end', ()=> resolve(Buffer.concat(chunks)));
@@ -85,28 +114,6 @@ app.get('/mcp/config.json', (req, res) => {
     res.status(500).json({ error: 'mcp_config_error', message: err.message });
   }
 });
-
-// Helper: fetch a URL into Buffer
-async function fetchBuffer(inputUrl){
-  // data URL 対応
-  if (/^data:/i.test(inputUrl)) {
-    const [, meta, b64] = String(inputUrl).match(/^data:([^;,]+)?;base64,(.+)$/i) || [];
-    if (!b64) throw new Error('unsupported data URL');
-    return Buffer.from(b64, 'base64');
-  }
-  const u = new URL(inputUrl);
-  const lib = (u.protocol === 'https:') ? https : http;
-  return new Promise((resolve, reject) => {
-    const req = lib.request({ method: 'GET', hostname: u.hostname, port: u.port || (u.protocol==='https:'?443:80), path: u.pathname + (u.search||'') }, (res) => {
-      if (res.statusCode && res.statusCode >= 400) { reject(new Error('download failed: '+res.statusCode)); return; }
-      const chunks = [];
-      res.on('data', (c)=>chunks.push(c));
-      res.on('end', ()=> resolve(Buffer.concat(chunks)));
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
 
 // Helper: upload to transfer.sh via PUT (returns public URL as text)
 async function uploadToTransferSh(filename, buffer){
@@ -173,6 +180,110 @@ async function uploadToFileIo(filename, buffer){
     req.write(body);
     req.end();
   });
+}
+
+function tokenizeShellCommand(input){
+  const tokens = [];
+  let current = '';
+  let quote = null;
+  let escapeNext = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (escapeNext) {
+      current += ch;
+      escapeNext = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escapeNext = true;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === '\'') {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += ch;
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+function parseCurlCommand(command){
+  if (typeof command !== 'string') throw new Error('curl command must be a string');
+  const normalized = command.replace(/\\\r?\n/g, ' ').trim();
+  if (!/^curl\b/.test(normalized)) throw new Error('command does not start with curl');
+  const tokens = tokenizeShellCommand(normalized);
+  if (!tokens.length || tokens[0] !== 'curl') throw new Error('invalid curl command');
+  tokens.shift();
+
+  let output = null;
+  const headers = {};
+  let followRedirect = false;
+  let url = null;
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === '-o' || token === '--output') {
+      i += 1;
+      if (i >= tokens.length) throw new Error('missing output target for curl command');
+      output = tokens[i];
+      continue;
+    }
+    if (token === '-H' || token === '--header') {
+      i += 1;
+      if (i >= tokens.length) throw new Error('missing header value for curl command');
+      const rawHeader = tokens[i];
+      const sep = rawHeader.indexOf(':');
+      if (sep === -1) throw new Error('invalid header format: ' + rawHeader);
+      const headerName = rawHeader.slice(0, sep).trim();
+      const headerValue = rawHeader.slice(sep + 1).trim();
+      if (headerName) headers[headerName] = headerValue;
+      continue;
+    }
+    if (token === '-L' || token === '--location' || token === '--location-trusted') {
+      followRedirect = true;
+      continue;
+    }
+    if (token.startsWith('-')) {
+      continue;
+    }
+    if (/^https?:\/\//i.test(token)) {
+      url = token;
+    }
+  }
+
+  if (!url) throw new Error('URL not found in curl command');
+  return { url, output, headers, followRedirect };
+}
+
+function sanitizeDownloadFilename(name, fallbackName, fallbackExt){
+  const fallback = (fallbackName && fallbackName.trim()) || `video_${Date.now()}`;
+  const raw = (name && name.trim()) || fallback;
+  let sanitized = raw.replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (!sanitized) sanitized = fallback;
+  if (sanitized.length > 128) {
+    sanitized = sanitized.slice(-128);
+  }
+  if (!path.extname(sanitized) && fallbackExt) {
+    const ext = fallbackExt.startsWith('.') ? fallbackExt : `.${fallbackExt}`;
+    sanitized += ext;
+  }
+  return sanitized;
 }
 
 // POST /expose { url: string }
@@ -331,11 +442,78 @@ const syntheticNanoBananaTools = buildSyntheticToolsResponder('nano_banana_edit'
 const syntheticSeedreamTools = buildSyntheticToolsResponder('seedream_edit');
 const syntheticVeo3Tools = buildSyntheticVideoToolsResponder('veo3_fast_i2v');
 const syntheticHailuoTools = buildSyntheticVideoToolsResponder('hailuo_02');
+const syntheticSoraTools = (req, res, next) => {
+  try {
+    if (req.method !== 'POST') return next();
+    const ct = (req.headers['content-type'] || '').toLowerCase();
+    if (!ct.startsWith('application/json')) return next();
+    const body = req.body || {};
+    if (body.method !== 'tools/list') return next();
+
+    const id = body && body.id != null ? body.id : null;
+    const tools = [
+      {
+        name: 'openai_sora_submit',
+        description: 'Submit an OpenAI Sora text-to-video generation job.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            prompt: { type: 'string', description: 'Detailed description of the desired video.' },
+            model: { type: 'string', description: "Model variant (sora-2 or sora-2-pro).", default: 'sora-2' },
+            input_reference: { type: 'string', format: 'uri', description: 'Optional first-frame image URL.' },
+            seconds: { type: 'string', description: 'Video duration in seconds. Defaults to 8.' },
+            size: { type: 'string', description: "Video resolution, e.g. '1280x720'." },
+            remix_video_id: { type: 'string', description: 'Optional prior video ID to remix.' }
+          },
+          required: ['prompt']
+        }
+      },
+      {
+        name: 'openai_sora_status',
+        description: 'Check OpenAI Sora job status by video_id.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            video_id: { type: 'string', description: 'ID returned by openai_sora_submit.' },
+            request_id: { type: 'string', description: 'Alias for backward compatibility.' }
+          },
+          required: ['video_id']
+        }
+      },
+      {
+        name: 'openai_sora_result',
+        description: 'Fetch OpenAI Sora job result by video_id.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            video_id: { type: 'string', description: 'ID returned by openai_sora_submit.' },
+            request_id: { type: 'string', description: 'Alias for backward compatibility.' }
+          },
+          required: ['video_id']
+        }
+      }
+    ];
+
+    const sid = req.headers['mcp-session-id'] || req.headers['x-mcp-session-id'];
+    if (sid) {
+      try { res.setHeader('mcp-session-id', String(sid)); } catch (_) {}
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id, x-mcp-session-id');
+
+    const payload = { jsonrpc: '2.0', id, result: { tools } };
+    return res.status(200).json(payload);
+  } catch (e) {
+    console.error('Synthetic Sora tools/list error:', e.message);
+    return next();
+  }
+};
 
 // Apply to specific endpoints lacking tools/list
 app.use('/mcp/i2v/fal/minimax/hailuo-02/pro', syntheticHailuoTools);
 app.use('/mcp/i2v/fal/veo3/fast', syntheticVeo3Tools);
 app.use('/mcp/i2v/fal/veo3', syntheticVeo3Tools);
+app.use('/mcp/t2v/openai/sora', syntheticSoraTools);
 app.use('/mcp/i2i/fal/nano-banana/edit', syntheticNanoBananaTools);
 app.use('/mcp/i2i/fal/nano-banana', syntheticNanoBananaTools);
 app.use('/mcp/t2i/fal/nano-banana', syntheticNanoBananaTools);
@@ -1054,6 +1232,223 @@ app.post(['/mcp/i2v/fal/veo3/fast', '/mcp/i2v/fal/veo3'], async (req, res, next)
     }
   } catch (e) {
     console.error('Veo3 tools/call bridge error:', e.message);
+  }
+  return next();
+});
+
+// Translate MCP tools/call for OpenAI Sora into upstream call
+app.post('/mcp/t2v/openai/sora', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    if (body && body.method === 'tools/call' && body.params && typeof body.params.name === 'string') {
+      const name = String(body.params.name || '');
+      const args = (body.params && body.params.arguments) || {};
+      const isSubmit = /openai_sora_submit$/i.test(name) || /sora_submit$/i.test(name);
+      const isStatus = /openai_sora_status$/i.test(name) || /sora_status$/i.test(name);
+      const isResult = /openai_sora_result$/i.test(name) || /sora_result$/i.test(name);
+      if (!(isSubmit || isStatus || isResult)) return next();
+
+      // Soraのstatus/resultエンドポイントはvideo_idを必須とするため、互換用のrequest_idから補完する
+      if ((isStatus || isResult) && args && typeof args === 'object') {
+        const hasVideoId = typeof args.video_id === 'string' && args.video_id.trim().length > 0;
+        if (!hasVideoId) {
+          const fallback = typeof args.request_id === 'string' ? args.request_id.trim() : '';
+          if (fallback) args.video_id = fallback;
+        }
+      }
+
+      const originalPath = req.originalUrl;
+      const nonMcpPath = originalPath.replace(/^\/mcp/, '');
+      const upstreamUrl = new URL(`https://${ALLOWED_MCP_HOST}${nonMcpPath}`);
+      const auth = req.headers['authorization'] || (process.env.MCP_AUTH || undefined);
+      const inboundSid = req.headers['mcp-session-id'] || req.headers['x-mcp-session-id'];
+
+      async function fetchUpstreamTools(sid){
+        const payload = { jsonrpc: '2.0', id: Date.now(), method: 'tools/list', params: {} };
+        const textBody = JSON.stringify(payload);
+        const options = {
+          protocol: upstreamUrl.protocol,
+          hostname: upstreamUrl.hostname,
+          port: upstreamUrl.port || 443,
+          path: upstreamUrl.pathname + upstreamUrl.search,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'host': upstreamUrl.host,
+            ...(auth ? { 'Authorization': auth } : {}),
+            ...(sid ? { 'mcp-session-id': sid } : {})
+          }
+        };
+        const txt = await new Promise((resolve, reject) => {
+          const up = https.request(options, (upRes) => {
+            const chunks = [];
+            upRes.on('data', (c)=>chunks.push(c));
+            upRes.on('end', ()=> resolve(Buffer.concat(chunks).toString('utf8')));
+          });
+          up.on('error', reject);
+          up.write(textBody);
+          up.end();
+        });
+        try { return JSON.parse(txt); } catch(_) { return null; }
+      }
+
+      function pickCandidatesFromList(obj){
+        try {
+          const arr = (obj && obj.result && Array.isArray(obj.result.tools)) ? obj.result.tools : [];
+          const names = arr.map(t => String((t && t.name) || '')).filter(Boolean);
+          if (isSubmit) {
+            const submitLike = names.filter(n => /(submit|generate|run)$/i.test(n) && !/(status|result|get)$/i.test(n));
+            return submitLike.length ? submitLike : names;
+          } else if (isStatus) {
+            const stLike = names.filter(n => /(status|poll)$/i.test(n));
+            return stLike.length ? stLike : names;
+          } else {
+            const resLike = names.filter(n => /(result|get)$/i.test(n));
+            return resLike.length ? resLike : names;
+          }
+        } catch(_) { return []; }
+      }
+
+      let candidates = [];
+      try {
+        const sp = new URL('https://dummy' + req.originalUrl).searchParams;
+        const oSubmit = sp.get('tool_submit');
+        const oStatus = sp.get('tool_status');
+        const oResult = sp.get('tool_result');
+        if ((isSubmit && oSubmit) || (isStatus && oStatus) || (isResult && oResult)) {
+          candidates = [ (isSubmit ? oSubmit : isStatus ? oStatus : oResult) ].filter(Boolean);
+        }
+      } catch(_){}
+
+      let upstreamSid = null;
+      try { upstreamSid = await ensureUpstreamSession(); } catch(e) { console.warn('Sora bridge: initialize upstream failed:', e.message); }
+      if (candidates.length === 0) {
+        try {
+          const listed = await fetchUpstreamTools(upstreamSid);
+          candidates = pickCandidatesFromList(listed);
+        } catch(_) { candidates = []; }
+      }
+      if (!candidates || candidates.length === 0) {
+        candidates = isSubmit ? ['openai_sora_submit','sora_submit','submit']
+          : isStatus ? ['openai_sora_status','sora_status','status']
+          : ['openai_sora_result','sora_result','result'];
+      }
+
+      async function ensureUpstreamSession(){
+        const payload = { jsonrpc: '2.0', id: Date.now(), method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'kamui-local-proxy', version: '1.0.0' } } };
+        const textBody = JSON.stringify(payload);
+        const options = {
+          protocol: upstreamUrl.protocol,
+          hostname: upstreamUrl.hostname,
+          port: upstreamUrl.port || 443,
+          path: upstreamUrl.pathname + upstreamUrl.search,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'host': upstreamUrl.host,
+            ...(auth ? { 'Authorization': auth } : {}),
+            ...(inboundSid ? { 'mcp-session-id': inboundSid } : {})
+          }
+        };
+        const outSid = await new Promise((resolve, reject) => {
+          const up = https.request(options, (upRes) => {
+            const sid = upRes.headers['mcp-session-id'] || upRes.headers['x-mcp-session-id'];
+            upRes.on('data', ()=>{});
+            upRes.on('end', ()=> resolve(Array.isArray(sid) ? sid[0] : sid));
+          });
+          up.on('error', reject);
+          up.write(textBody);
+          up.end();
+        });
+        return outSid || inboundSid || null;
+      }
+
+      async function sendUpstream(payload, sid){
+        const textBody = JSON.stringify(payload);
+        const options = {
+          protocol: upstreamUrl.protocol,
+          hostname: upstreamUrl.hostname,
+          port: upstreamUrl.port || 443,
+          path: upstreamUrl.pathname + upstreamUrl.search,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'host': upstreamUrl.host,
+            ...(auth ? { 'Authorization': auth } : {}),
+            ...(sid ? { 'mcp-session-id': sid } : {})
+          }
+        };
+        return await new Promise((resolve, reject) => {
+          const up = https.request(options, (upRes) => {
+            const chunks = [];
+            upRes.on('data', (c)=>chunks.push(c));
+            upRes.on('end', ()=> resolve({ text: Buffer.concat(chunks).toString('utf8'), headers: upRes.headers || {} }));
+          });
+          up.on('error', reject);
+          up.write(textBody);
+          up.end();
+        });
+      }
+
+      async function callCandidate(toolName, sid, mode){
+        const baseId = body.id || Date.now();
+        let payload;
+        if (mode === 'direct') {
+          payload = { jsonrpc: '2.0', id: baseId, method: toolName, params: args };
+        } else {
+          payload = { jsonrpc: '2.0', id: baseId, method: 'tools/call', params: { name: toolName, arguments: args } };
+        }
+        const { text, headers } = await sendUpstream(payload, sid);
+        let obj = null;
+        try { obj = JSON.parse(text); } catch(_) {}
+        return { text, obj, headers };
+      }
+
+      function getErrorMessage(obj){ return String((obj && obj.error && obj.error.message) || '').toLowerCase(); }
+      function getErrorCode(obj){ const raw = obj && obj.error ? obj.error.code : undefined; return Number.isFinite(Number(raw)) ? Number(raw) : null; }
+
+      let lastText = '';
+      let toolsCallUnsupported = false;
+      for (const t of candidates){
+        try {
+          const { text, obj, headers } = await callCandidate(t, upstreamSid, 'tools');
+          lastText = text;
+          if (obj && !obj.error) return res.status(200).json(obj);
+          if (obj && obj.error) {
+            const msg = getErrorMessage(obj);
+            const code = getErrorCode(obj);
+            if (msg.includes('tools not supported') || (msg.includes('method') && msg.includes('not found') && !msg.includes('tool not found')) || (!msg && code === -32601)) {
+              toolsCallUnsupported = true;
+              break;
+            }
+            if (msg.includes('tool not found')) continue;
+            return res.status(200).json(obj);
+          }
+        } catch(e){ lastText = String(e && e.message) || String(e); }
+      }
+
+      if (toolsCallUnsupported) {
+        for (const t of candidates) {
+          try {
+            const { text, obj, headers } = await callCandidate(t, upstreamSid, 'direct');
+            lastText = text;
+            if (obj && !obj.error) return res.status(200).json(obj);
+            if (obj && obj.error) {
+              const msg = getErrorMessage(obj);
+              if (msg.includes('tool not found') || (msg.includes('method') && msg.includes('not found'))) continue;
+              return res.status(200).json(obj);
+            }
+          } catch(e){ lastText = String(e && e.message) || String(e); }
+        }
+      }
+
+      console.warn('Sora bridge: all candidates failed. last=', lastText.slice(0,200));
+    }
+  } catch (e) {
+    console.error('Sora tools/call bridge error:', e.message);
   }
   return next();
 });
@@ -2032,6 +2427,75 @@ app.post('/api/story-gen/save', async (req, res) => {
   } catch (error) {
     console.error('Error saving story:', error);
     res.status(500).json({ error: 'Failed to save story.' });
+  }
+});
+
+// POST /api/story-gen/sora/download - Download Sora video using curl command instructions
+app.post('/api/story-gen/sora/download', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const curlCommand = typeof body.curl_command === 'string' ? body.curl_command : '';
+    const videoIdRaw = typeof body.video_id === 'string' ? body.video_id : '';
+
+    if (!curlCommand.trim()) {
+      return res.status(400).json({ error: 'curl_command_required', message: 'curl_command is required.' });
+    }
+
+    let parsed;
+    try {
+      parsed = parseCurlCommand(curlCommand);
+    } catch (err) {
+      return res.status(400).json({ error: 'invalid_curl_command', message: err.message });
+    }
+
+    const { url, output, headers, followRedirect } = parsed;
+    const urlDerivedName = (() => {
+      try {
+        const remoteUrl = new URL(url);
+        const base = path.basename(remoteUrl.pathname);
+        return base || '';
+      } catch (_) {
+        return '';
+      }
+    })();
+
+    const sanitizedVideoId = videoIdRaw.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+    const fallbackBase = sanitizedVideoId ? `${sanitizedVideoId}_video` : `sora_${Date.now()}`;
+    const candidateExt = path.extname(output || '') || path.extname(urlDerivedName || '') || '.mp4';
+    const fallbackNameWithExt = `${fallbackBase}${candidateExt.startsWith('.') ? candidateExt : `.${candidateExt}`}`;
+    let filename = sanitizeDownloadFilename(output || urlDerivedName, fallbackNameWithExt, candidateExt || '.mp4');
+
+    const destDir = path.join(__dirname, 'saves', 'story-gen', 'videos');
+    await fse.ensureDir(destDir);
+
+    const parsedName = path.parse(filename);
+    let finalName = filename;
+    let duplicateCounter = 1;
+    while (await fse.pathExists(path.join(destDir, finalName))) {
+      finalName = `${parsedName.name}_${duplicateCounter}${parsedName.ext || ''}`;
+      duplicateCounter += 1;
+    }
+
+    const maxRedirects = followRedirect ? 5 : 0;
+    let buffer;
+    try {
+      buffer = await fetchBuffer(url, { headers, maxRedirects });
+    } catch (err) {
+      console.error('Sora download fetch error:', err.message);
+      return res.status(502).json({ error: 'download_failed', message: err.message });
+    }
+
+    const destPath = path.join(destDir, finalName);
+    await fse.writeFile(destPath, buffer);
+
+    const relativePath = path.join('story-gen', 'videos', finalName).replace(/\\/g, '/');
+    const cacheBuster = Date.now();
+    const localUrl = `http://localhost:${PORT}/saves/${relativePath}?v=${cacheBuster}`;
+
+    res.json({ success: true, local_url: localUrl, relative_path: relativePath, filename: finalName, remote_url: url });
+  } catch (error) {
+    console.error('Sora download error:', error.message);
+    res.status(500).json({ error: 'failed_to_download', message: error.message });
   }
 });
 

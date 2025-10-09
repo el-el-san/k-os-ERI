@@ -80,3 +80,7 @@ yarn-error.log*
 # Generated config files that may contain secrets
 /kamuios/static/mcp/config.json
 /k-os-ERI/static/mcp/config.json
+
+# Android signing artifacts
+/flutter/direct_drawing_generator/android/key.properties
+/flutter/direct_drawing_generator/android/app/*.keystore
